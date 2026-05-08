@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slot 3D Game - Pro Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { 
+            background: linear-gradient(180deg, #000000 0%, #0a1128 50%, #001f3f 100%);
+            font-family: sans-serif; 
+            color: #fff;
+        }
+
+        .blue-panel {
+            background: linear-gradient(145deg, #00BFFF 0%, #1E90FF 45%, #0052D4 55%, #00BFFF 100%);
+            border: 1px solid #87CEFA;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 15px rgba(255,255,255,0.4);
+            color: #001f3f;
+        }
+
+        .chrome-panel {
+            background: rgba(10, 15, 30, 0.8); 
+            backdrop-filter: blur(12px); 
+            border: 1px solid rgba(0, 191, 255, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .blue-text {
+            background: linear-gradient(180deg, #87CEFA 0%, #1E90FF 50%, #0052D4 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+        }
+
+        .btn-blue {
+            background: linear-gradient(180deg, #1E90FF 0%, #0052D4 100%);
+            color: #ffffff;
+            border: 1px solid #87CEFA;
+            transition: all 0.3s ease;
+        }
+        .btn-blue:hover {
+            background: linear-gradient(180deg, #ffffff 0%, #1E90FF 100%);
+            color: #001f3f;
+            transform: translateY(-2px);
+            box-shadow: 0 0 20px rgba(30, 144, 255, 0.6);
+        }
+
+        #app-frame { width: 100vw; height: 100vh; border: none; display: none; background: white; }
+        
+        .img-container {
+            width: 100%;
+            max-width: 240px;
+            margin: 0 auto 2.5rem auto;
+            position: relative;
+        }
+
+        .aspect-9-16 {
+            width: 100%;
+            aspect-ratio: 9 / 16;
+            object-fit: cover;
+            border-radius: 1rem;
+            box-shadow: 0 0 30px rgba(30, 144, 255, 0.15);
+            border: 3px solid #1E90FF;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .input-metallic {
+            background: rgba(0, 10, 20, 0.6);
+            border: 1px solid #003366;
+            color: #87CEFA;
+            transition: all 0.3s;
+        }
+        .input-metallic:focus {
+            border-color: #1E90FF;
+            box-shadow: 0 0 15px rgba(30, 144, 255, 0.2);
+            outline: none;
+        }
+
+        /* Modal de Alerta de Sesión */
+        #session-alert {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+    </style>
+</head>
+<body class="min-h-screen overflow-y-auto">
+
+    <!-- Modal de Sesión Duplicada -->
+    <div id="session-alert">
+        <div class="chrome-panel p-8 rounded-2xl max-w-sm text-center border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.3)]">
+            <i class="fas fa-user-shield text-4xl text-red-400 mb-4"></i>
+            <h3 class="text-xl font-bold text-white mb-2">Sesión Finalizada</h3>
+            <p class="text-sm text-slate-300 mb-6">Se ha detectado un inicio de sesión en otro dispositivo.</p>
+            <button onclick="location.reload()" class="btn-blue w-full py-3 rounded-xl font-bold text-xs uppercase tracking-widest">
+                Entendido
+            </button>
+        </div>
+    </div>
+
+    <div id="auth-container" class="min-h-screen flex flex-col items-center justify-center p-4 md:p-6">
+        
+        <div class="text-center mb-8 md:mb-10 mt-4">
+            <h1 class="text-3xl md:text-4xl font-black tracking-tighter blue-text uppercase drop-shadow-lg">SLOT 3D GAME</h1>
+            <div class="h-1 w-20 md:w-24 bg-gradient-to-r from-transparent via-blue-500 to-transparent mx-auto mt-1"></div>
+            <p class="text-blue-400/80 text-[9px] md:text-[10px] uppercase tracking-[0.3em] mt-2 font-bold">Pro Edition / Gestión de Slot</p>
+        </div>
+
+        <div class="img-container">
+            <div class="aspect-9-16">
+                <img id="user-image" src="slot3d.jpg" 
+                     alt="[Imagen de Slot 3D Game]" 
+                     class="w-full h-full object-cover"
+                     onerror="this.style.display='none'; document.getElementById('placeholder').style.display='flex';">
+                
+                <div id="placeholder" class="flex flex-col items-center justify-center p-5 text-center text-blue-700/50" style="display: none;">
+                    <i class="fas fa-gamepad text-6xl mb-4 opacity-30"></i>
+                    <p class="text-xs font-bold uppercase tracking-widest text-blue-500">slot3d.jpg</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-stretch">
+
+            <div class="blue-panel rounded-3xl p-6 md:p-8 relative flex flex-col justify-between">
+                <div class="absolute -top-3 -right-3 bg-black text-blue-300 text-[9px] font-bold px-3 py-1 rounded-full border border-blue-500 shadow-xl">LICENCIA PRO</div>
+                
+                <div>
+                    <h2 class="text-lg md:text-xl font-black mb-4 flex items-center text-blue-950">
+                        <i class="fas fa-cube mr-3 opacity-80"></i> ADQUISICIÓN
+                    </h2>
+                    
+                    <p class="text-blue-900/90 text-sm mb-6 leading-relaxed font-bold">
+                        Tecnología inmersiva para Slot. Un solo pago de 20€ + Tracks Telemetry, control total de por vida.
+                    </p>
+
+                    <div class="bg-black/10 rounded-2xl p-5 border border-black/10 mb-6">
+                        <ul class="text-xs space-y-3 text-blue-950 font-black">
+                            <li class="flex items-center"><i class="fas fa-check-circle mr-2 text-blue-800"></i> Solicita acceso vía Email</li>
+                            <li class="flex items-center"><i class="fas fa-check-circle mr-2 text-blue-800"></i> Pago único de 20,00€ + Tracks Telemetry</li>
+                            <li class="flex items-center"><i class="fas fa-check-circle mr-2 text-blue-800"></i> Activación Vitalicia</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <a id="mail-link" href="#" class="block w-full bg-black hover:bg-neutral-900 text-blue-400 font-black py-4 rounded-xl text-center shadow-2xl transition duration-300 transform hover:scale-[1.02] text-sm tracking-widest uppercase border border-blue-600">
+                    SOLICITAR AHORA (20€)
+                </a>
+            </div>
+
+            <div class="chrome-panel rounded-3xl p-6 md:p-8 flex flex-col">
+                <h2 class="text-lg md:text-xl font-bold text-white mb-6 flex items-center blue-text">
+                    <i class="fas fa-fingerprint mr-3"></i> AREA CLIENTE
+                </h2>
+
+                <form id="login-form" class="space-y-6 flex-grow">
+                    <div>
+                        <label class="block text-[10px] font-black text-blue-400/80 uppercase mb-2 tracking-widest">Identificación</label>
+                        <input type="email" id="email" required 
+                            class="w-full input-metallic rounded-xl p-4 text-sm"
+                            placeholder="tu@email.com">
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-blue-400/80 uppercase mb-2 tracking-widest">Código de Activación</label>
+                        <input type="text" id="code" required 
+                            class="w-full input-metallic rounded-xl p-4 text-center tracking-[0.5em] uppercase font-mono text-sm"
+                            placeholder="XXX-XXX">
+                    </div>
+                    
+                    <div id="msg-box" class="hidden p-3 rounded-xl text-xs text-center font-bold break-words"></div>
+
+                    <button type="submit" id="btn-login" class="btn-blue w-full font-black py-4 rounded-xl shadow-xl transition flex justify-center items-center text-sm tracking-widest uppercase">
+                        ENTRAR <i class="fas fa-chevron-right ml-3 text-xs"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <p class="mt-12 text-[9px] text-blue-800/50 text-center max-w-lg uppercase tracking-[0.2em] font-medium">
+            Slot 3D Game v1.0 <span class="mx-2">|</span> slotcarhome@gmail.com
+        </p>
+    </div>
+
+    <iframe id="app-frame" src="about:blank"></iframe>
+    
+    <button onclick="logout()" id="logout-btn" class="hidden fixed bottom-8 right-8 btn-blue w-14 h-14 rounded-2xl shadow-2xl z-[100] flex items-center justify-center text-xl border-2 border-white">
+        <i class="fas fa-power-off"></i>
+    </button>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, getDocs, doc, updateDoc, setDoc, onSnapshot, increment } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyDW-2Yc4kvZJYbNOVeesPZWdRThYe0noUI",
+          authDomain: "correo-95e58.firebaseapp.com",
+          projectId: "correo-95e58",
+          storageBucket: "correo-95e58.firebasestorage.app",
+          messagingSenderId: "977860532946",
+          appId: "1:977860532946:web:3738c6b7165201bce7ab0b"
+        };
+        
+        const ADMIN_EMAIL = "slotcarhome@gmail.com"; 
+        const APP_FILENAME = "slot-3d-game.html"; 
+        
+        // CORREGIDO: APP_ID debe ser igual al del administrador ("app_3dslot")
+        const APP_ID = "app_3dslot"; 
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        // Inicializar autenticación de manera segura
+        (async () => {
+            try {
+                await signInAnonymously(auth);
+            } catch(err) {
+                console.warn("Aviso: Autenticación limitada.", err);
+            }
+        })();
+
+        const mailLink = document.getElementById('mail-link');
+        const emailInput = document.getElementById('email');
+        let unsubscribeSession = null;
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        
+        function updateMailLink() {
+            const userEmail = emailInput.value || "[tu correo]";
+            const subject = "Interés Licencia Slot 3D Game";
+            const body = `Hola equipo de Slot 3D Game,%0D%0A%0D%0AEstoy muy interesado en adquirir la licencia PRO (20€ + Tracks Telemetry) para mi usuario: ${userEmail}%0D%0A%0D%0AQuedo a la espera de sus instrucciones para proceder con el pago.%0D%0A%0D%0AGracias y un saludo.`;
+            mailLink.href = `mailto:${ADMIN_EMAIL}?subject=${subject}&body=${body}`;
+        }
+        emailInput.addEventListener('input', updateMailLink);
+        updateMailLink();
+
+        mailLink.addEventListener('click', async () => {
+            try {
+                const statsRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'stats', 'general'); 
+                await setDoc(statsRef, { purchase_clicks: increment(1), last_click: new Date().toISOString() }, { merge: true });
+            } catch (e) {
+                console.error("Error stats:", e);
+            }
+        });
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = emailInput.value.toLowerCase().trim();
+            const code = document.getElementById('code').value.trim();
+            const btn = document.getElementById('btn-login');
+            
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>'; btn.disabled = true;
+            document.getElementById('msg-box').classList.add('hidden');
+
+            try {
+                // Obtener todos los documentos y filtrar en memoria
+                const querySnapshot = await getDocs(collection(db, 'artifacts', APP_ID, 'public', 'data', 'access_codes'));
+                
+                let docSnap = null;
+                let userData = null;
+
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    // CORREGIDO: Evita problemas de mayúsculas y minúsculas usando .toLowerCase()
+                    if (data.email.toLowerCase() === email && data.code === code) {
+                        docSnap = doc;
+                        userData = data;
+                    }
+                });
+
+                if (docSnap) {
+                    if(userData.active === false) {
+                        showMessage("⛔ LICENCIA NO ACTIVA", "error");
+                    } else { 
+                        try {
+                            const sessionId = generateUUID();
+                            const docRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'access_codes', docSnap.id);
+                            await updateDoc(docRef, { current_session: sessionId, last_login: new Date().toISOString() });
+
+                            localStorage.setItem('user_' + APP_ID, email);
+                            localStorage.setItem('doc_id_' + APP_ID, docSnap.id);
+                            localStorage.setItem('session_' + APP_ID, sessionId);
+
+                            monitorSession(docSnap.id);
+                            showApp(); 
+                        } catch (writeError) {
+                            localStorage.setItem('user_' + APP_ID, email);
+                            showApp(); 
+                        }
+                    }
+                } else {
+                    showMessage("❌ DATOS INVÁLIDOS", "error");
+                }
+            } catch (error) { showMessage("ERROR: " + error.message, "error"); }
+            
+            btn.innerHTML = 'ENTRAR <i class="fas fa-chevron-right ml-3 text-xs"></i>'; btn.disabled = false;
+        });
+
+        function monitorSession(docId) {
+            if (unsubscribeSession) unsubscribeSession();
+            try {
+                const docRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'access_codes', docId);
+                unsubscribeSession = onSnapshot(docRef, (docSnap) => {
+                    const data = docSnap.data();
+                    const localSession = localStorage.getItem('session_' + APP_ID);
+                    if (data && data.current_session && data.current_session !== localSession) {
+                        forceLogout();
+                    }
+                });
+            } catch (e) {}
+        }
+
+        function showMessage(text, type) {
+            const box = document.getElementById('msg-box');
+            box.textContent = text;
+            box.className = `p-3 rounded-xl text-xs text-center font-bold border ${type === 'error' ? 'bg-red-900/40 text-red-200 border-red-500/50' : 'bg-green-900/40 text-green-200 border-green-500/50'}`;
+            box.classList.remove('hidden');
+        }
+
+        function showApp() {
+            document.getElementById('auth-container').style.display = 'none';
+            document.getElementById('app-frame').src = APP_FILENAME;
+            document.getElementById('app-frame').style.display = 'block';
+            document.getElementById('logout-btn').classList.remove('hidden');
+        }
+
+        function forceLogout() {
+            document.getElementById('session-alert').style.display = 'flex';
+            localStorage.removeItem('user_' + APP_ID); 
+            localStorage.removeItem('session_' + APP_ID);
+            localStorage.removeItem('doc_id_' + APP_ID);
+            document.getElementById('app-frame').src = 'about:blank';
+        }
+
+        window.logout = function() { 
+            if (unsubscribeSession) unsubscribeSession();
+            localStorage.removeItem('user_' + APP_ID); 
+            localStorage.removeItem('session_' + APP_ID);
+            localStorage.removeItem('doc_id_' + APP_ID);
+            location.reload(); 
+        }
+
+        const savedUser = localStorage.getItem('user_' + APP_ID);
+        const savedDocId = localStorage.getItem('doc_id_' + APP_ID);
+        if(savedUser && savedDocId) {
+            showApp();
+            monitorSession(savedDocId);
+        } else if (savedUser) window.logout(); 
+    </script>
+</body>
+</html>
