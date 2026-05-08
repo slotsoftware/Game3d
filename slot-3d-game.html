@@ -224,13 +224,77 @@
             }
         };
 
+        const getSmartBottomY = (model) => {
+            model.updateMatrixWorld(true);
+            let minWheelY = Infinity;
+            let minOverallY = Infinity;
+            
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            
+            // Ignoramos el 35% central del coche (la franja del medio). 
+            // Ahí es donde suele sobresalir la quilla/guía de slot hacia abajo.
+            const thresholdX = size.x * 0.175; 
+
+            model.traverse((child) => {
+                if (child.isMesh && child.geometry && child.geometry.attributes.position) {
+                    const pos = child.geometry.attributes.position;
+                    const wm = child.matrixWorld;
+                    const vec = new THREE.Vector3();
+                    
+                    let isTransparent = false;
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            isTransparent = child.material.some(m => m.transparent && m.opacity < 0.9);
+                        } else {
+                            isTransparent = child.material.transparent && child.material.opacity < 0.9;
+                        }
+                    }
+
+                    if (!isTransparent) {
+                        for (let i = 0; i < pos.count; i++) {
+                            vec.fromBufferAttribute(pos, i);
+                            vec.applyMatrix4(wm);
+                            
+                            if (vec.y < minOverallY) minOverallY = vec.y;
+                            
+                            // Si el vértice es lateral (supera el umbral del centro), pertenece a la rueda o talonera
+                            if (Math.abs(vec.x - center.x) > thresholdX) {
+                                if (vec.y < minWheelY) minWheelY = vec.y;
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Si encontró ruedas/laterales, las usa para el suelo exacto. Si es un modelo atípico, usa el punto más bajo global.
+            return (minWheelY !== Infinity) ? minWheelY : minOverallY;
+        };
+
+        // Generador Global de Sombra Falsa (Cero Cálculos)
+        const getFakeShadowTexture = () => {
+            if (window.fakeShadowTex) return window.fakeShadowTex;
+            if (typeof document === 'undefined') return null;
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            grad.addColorStop(0, 'rgba(0,0,0,0.9)'); 
+            grad.addColorStop(0.5, 'rgba(0,0,0,0.5)'); 
+            grad.addColorStop(1, 'rgba(0,0,0,0)');    
+            ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
+            window.fakeShadowTex = new THREE.CanvasTexture(canvas);
+            return window.fakeShadowTex;
+        };
+
         const TRANSLATIONS = {
             es: {
                 title: "3D SLOT GAME",
                 subtitle: "VIEWER & DECOR",
                 selectSource: "SELECCIONAR ORIGEN",
                 loadDesc: "Carga un archivo o vuelve al diseñador",
-                btnJson: "CARGAR JSON (.JSON)",
+                btnJson: "CARGAR CIRCUITOS LOCALES",
                 btn2d: "IR AL DISEÑADOR 2D",
                 clearCache: "Borrar caché del navegador",
                 cacheCleared: "Memoria de circuito borrada.",
@@ -294,7 +358,7 @@
                 noConfig: "Configura tu cuenta primero",
                 noFiles: "No se listaron archivos (Límite API)",
                 readyRef: "REF",
-                unsupportedCircuit: "⚠️ UNSUPPORTED CIRCUIT: This track contains bridges or roundabouts not supported in 3D yet.",
+                unsupportedCircuit: "⚠️ CIRCUITO NO SOPORTADO: Las rotondas y los circuitos de más de 2 carriles no están permitidos en el 3D.",
                 play: "REANUDAR",
                 pause: "PAUSAR",
                 visible: "TABLERO VISIBLE",
@@ -312,7 +376,7 @@
                 copy: "Copiar Código",
                 localMode: "MODO LOCAL / ENTRENAMIENTO",
                 rival: "RIVAL",
-                loadSetup: "CARGAR SETUP (.JSON)",
+                loadSetup: "CARGAR CONFIGURACIÓN DEL COCHE",
                 motor: "MOTOR",
                 tires: "NEUMÁTICOS",
                 ratio: "RELACIÓN",
@@ -349,7 +413,7 @@
                 subtitle: "VIEWER & DECOR",
                 selectSource: "SELECT SOURCE",
                 loadDesc: "Load a file or return to designer",
-                btnJson: "LOAD JSON (.JSON)",
+                btnJson: "LOAD LOCAL TRACKS",
                 btn2d: "GO TO 2D DESIGNER",
                 clearCache: "Clear browser cache",
                 cacheCleared: "Circuit memory cleared.",
@@ -413,7 +477,7 @@
                 noConfig: "Configure your account first",
                 noFiles: "No files listed (API Limit)",
                 readyRef: "REF",
-                unsupportedCircuit: "⚠️ UNSUPPORTED CIRCUIT: This track contains bridges or roundabouts not supported in 3D yet.",
+                unsupportedCircuit: "⚠️ UNSUPPORTED CIRCUIT: Roundabouts and tracks with more than 2 lanes are not allowed in 3D.",
                 play: "RESUME",
                 pause: "PAUSE",
                 visible: "BOARD VISIBLE",
@@ -431,7 +495,7 @@
                 copy: "Copy Code",
                 localMode: "LOCAL MODE / PRACTICE",
                 rival: "RIVAL",
-                loadSetup: "LOAD SETUP (.JSON)",
+                loadSetup: "LOAD CAR CONFIGURATION",
                 motor: "ENGINE",
                 tires: "TIRES",
                 ratio: "RATIO",
@@ -468,7 +532,7 @@
                 subtitle: "VISUALIZADOR & DECOR",
                 selectSource: "SELECIONAR ORIGEM",
                 loadDesc: "Carregue um ficheiro ou volte ao designer",
-                btnJson: "CARREGAR JSON (.JSON)",
+                btnJson: "CARREGAR PISTAS LOCAIS",
                 btn2d: "IR PARA O DESIGNER 2D",
                 clearCache: "Limpar cache do navegador",
                 cacheCleared: "Memória do circuito limpa.",
@@ -532,7 +596,7 @@
                 noConfig: "Configure a sua conta primeiro",
                 noFiles: "Nenhum ficheiro listado (Limite API)",
                 readyRef: "PRONTO",
-                unsupportedCircuit: "⚠️ CIRCUITO NÃO SUPORTADO: Esta pista contém pontes ou rotundas ainda não suportadas em 3D.",
+                unsupportedCircuit: "⚠️ CIRCUITO NÃO SUPORTADO: Rotundas e pistas com mais de 2 faixas não são permitidas em 3D.",
                 play: "RETOMAR",
                 pause: "PAUSAR",
                 visible: "TABULEIRO VISÍVEL",
@@ -550,7 +614,7 @@
                 copy: "Copiar Código",
                 localMode: "MODO LOCAL / TREINO",
                 rival: "RIVAL",
-                loadSetup: "CARREGAR SETUP (.JSON)",
+                loadSetup: "CARREGAR CONFIGURAÇÃO DO CARRO",
                 motor: "MOTOR",
                 tires: "PNEUS",
                 ratio: "RELAÇÃO",
@@ -600,9 +664,9 @@
             return <svg {...attrs} width={size} height={size} className={className} {...props}>{Array.isArray(children) && children.map(([childTag, childAttrs], index) => React.createElement(childTag, { ...childAttrs, key: index }))}</svg>;
         };
 
-        const icons = ['Trash2','Image','Fuel','Move','Zap','Bluetooth','RotateCw','RotateCcw','X','Repeat','PenTool','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Square','FolderOpen','Save','FileText','Activity','Play','Pause','Flag','GitCommit','ZoomIn','ZoomOut','Crosshair','Undo2','Redo2','Layers','Clock','Hash','Plus','Minus','AlertTriangle', 'Cloud', 'CloudUpload', 'CloudDownload', 'Settings', 'Battery', 'Scale', 'Trophy', 'Timer', 'Gauge', 'Maximize', 'Minimize', 'User', 'Users', 'ChevronDown', 'Mic', 'MicOff', 'Move3d', 'LayoutTemplate', 'TreePine', 'Cone', 'Fence', 'Grip', 'Video', 'Eye', 'Gamepad2', 'Copy', 'Car', 'Volume2', 'VolumeX'].reduce((acc, name) => { acc[name] = (p) => <IconWrapper name={name} {...p} />; return acc; }, {});
+        const icons = ['Trash2','Image','Fuel','Move','Zap','Bluetooth','RotateCw','RotateCcw','X','Repeat','PenTool','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Square','FolderOpen','Save','FileText','Activity','Play','Pause','Flag','GitCommit','ZoomIn','ZoomOut','Crosshair','Undo2','Redo2','Layers','Clock','Hash','Plus','Minus','AlertTriangle', 'Cloud', 'CloudUpload', 'CloudDownload', 'Settings', 'Battery', 'Scale', 'Trophy', 'Timer', 'Gauge', 'Maximize', 'Minimize', 'User', 'Users', 'ChevronDown', 'Mic', 'MicOff', 'Move3d', 'LayoutTemplate', 'TreePine', 'Cone', 'Fence', 'Grip', 'Video', 'Eye', 'Gamepad2', 'Copy', 'Car', 'Volume2', 'VolumeX', 'Moon', 'Sun'].reduce((acc, name) => { acc[name] = (p) => <IconWrapper name={name} {...p} />; return acc; }, {});
         
-        const { Trash2, Image: ImageIcon, Fuel, Move, Zap, Bluetooth, RotateCw, RotateCcw, X: XIcon, Repeat, PenTool, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Square, FolderOpen, Save, FileText, Activity, Play, Pause, Flag, GitCommit, ZoomIn, ZoomOut, Crosshair, Undo2, Redo2, Layers, Clock, Hash, Plus, Minus, AlertTriangle, Cloud, CloudUpload, CloudDownload, Settings, Battery, Scale, Trophy, Timer, Gauge, Maximize, Minimize, User, Users, ChevronDown, Mic, MicOff, Move3d, LayoutTemplate, TreePine, Cone, Fence, Grip, Video, Eye, Gamepad2, Copy, Car, Volume2, VolumeX } = icons;
+        const { Trash2, Image: ImageIcon, Fuel, Move, Zap, Bluetooth, RotateCw, RotateCcw, X: XIcon, Repeat, PenTool, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Square, FolderOpen, Save, FileText, Activity, Play, Pause, Flag, GitCommit, ZoomIn, ZoomOut, Crosshair, Undo2, Redo2, Layers, Clock, Hash, Plus, Minus, AlertTriangle, Cloud, CloudUpload, CloudDownload, Settings, Battery, Scale, Trophy, Timer, Gauge, Maximize, Minimize, User, Users, ChevronDown, Mic, MicOff, Move3d, LayoutTemplate, TreePine, Cone, Fence, Grip, Video, Eye, Gamepad2, Copy, Car, Volume2, VolumeX, Moon, Sun } = icons;
 
         const getPieceGeometry = (p) => {
             if (!p || p.type === 'set_origin' || p.type === 'goto') return null;
@@ -822,7 +886,7 @@
         };
 
         /* --- GARAJE 3D BACKGROUND --- */
-        const Garage3DBackground = ({ carUrl, carRotation, qualityMode }) => {
+        const Garage3DBackground = ({ carUrl, carRotation, carOffset, qualityMode }) => {
             const mountRef = useRef(null);
             const sceneRef = useRef(null);
             const carGroupRef = useRef(null);
@@ -847,25 +911,29 @@
                 const renderer = new THREE.WebGLRenderer({ antialias: qSettings.aa, powerPreference: "high-performance", alpha: true });
                 renderer.setSize(width, height);
                 renderer.setClearColor(0x000000, 0); // Canvas transparente
-                renderer.setPixelRatio(qSettings.pr); 
+                
+                // OPTIMIZACIÓN GARAJE: Limitar pixelRatio máximo a 1.0 en el menú. Evita que portátiles 4K o móviles colapsen.
+                renderer.setPixelRatio(Math.min(qSettings.pr, 1.0)); 
                 renderer.outputEncoding = THREE.sRGBEncoding;
-                renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 0.8; // Exposición reducida para evitar blancos quemados
+                // OPTIMIZACIÓN GARAJE: Quitar ToneMapping pesado para ahorrar GPU
+                renderer.toneMapping = THREE.NoToneMapping;
                 mountRef.current.appendChild(renderer.domElement);
                 rendererRef.current = renderer;
 
-                scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6)); // Intensidad ambiental reducida
-                const mainSpot = new THREE.SpotLight(0xffffff, 1.8); // Foco principal reducido
-                mainSpot.position.set(0, 8, 5); mainSpot.angle = Math.PI / 4; mainSpot.penumbra = 0.5;
-                scene.add(mainSpot);
-
-                const greenSpot = new THREE.SpotLight(0x39ff14, 1.5);
-                greenSpot.position.set(5, 5, -5); greenSpot.angle = Math.PI / 3; greenSpot.penumbra = 0.8;
-                scene.add(greenSpot);
+                // OPTIMIZACIÓN GARAJE: Reemplazar SpotLights costosas por luces básicas
+                scene.add(new THREE.AmbientLight(0xffffff, 0.8));
                 
-                const blueLight = new THREE.PointLight(0x3b82f6, 2, 15);
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                dirLight.position.set(5, 10, 5);
+                scene.add(dirLight);
+
+                const blueLight = new THREE.PointLight(0x3b82f6, 1.5, 15);
                 blueLight.position.set(-5, 2, 5);
                 scene.add(blueLight);
+
+                const greenLight = new THREE.PointLight(0x39ff14, 1.5, 15);
+                greenLight.position.set(5, 2, -5);
+                scene.add(greenLight);
 
                 const carGroup = new THREE.Group();
                 scene.add(carGroup);
@@ -882,7 +950,18 @@
                 window.addEventListener('resize', onResize);
 
                 let frameId;
-                const animate = () => { frameId = requestAnimationFrame(animate); if (controls) controls.update(); renderer.render(scene, camera); };
+                let lastTime = 0;
+                const animate = (time) => { 
+                    frameId = requestAnimationFrame(animate); 
+                    
+                    // OPTIMIZACIÓN EXTREMA GARAJE: Limitar el renderizado a ~30 FPS. 
+                    // Ahorra un 50-70% de CPU/GPU instantáneamente en el menú.
+                    if (time - lastTime < 33) return;
+                    lastTime = time;
+
+                    if (controls) controls.update(); 
+                    renderer.render(scene, camera); 
+                };
                 animate();
 
                 return () => { cancelAnimationFrame(frameId); window.removeEventListener('resize', onResize); if(controls) controls.dispose(); renderer.dispose(); if (mountRef.current) mountRef.current.innerHTML = ''; };
@@ -891,23 +970,33 @@
             // ACTUALIZACIÓN DINÁMICA DE CALIDAD
             useEffect(() => {
                 if(rendererRef.current) {
-                    rendererRef.current.setPixelRatio(getQualitySettings(qualityMode).pr);
+                    rendererRef.current.setPixelRatio(Math.min(getQualitySettings(qualityMode).pr, 1.0));
                 }
             }, [qualityMode]);
 
-            // ROTACIÓN EN TIEMPO REAL DESDE LA INTERFAZ
+            // ROTACIÓN Y POSICIÓN EN TIEMPO REAL DESDE LA INTERFAZ
             useEffect(() => {
-                if (carGroupRef.current && carRotation) {
-                    carGroupRef.current.rotation.set(
-                        carRotation[0] * Math.PI / 180,
-                        carRotation[1] * Math.PI / 180,
-                        carRotation[2] * Math.PI / 180
-                    );
+                if (carGroupRef.current) {
+                    if (carRotation) {
+                        carGroupRef.current.rotation.set(
+                            carRotation[0] * Math.PI / 180,
+                            carRotation[1] * Math.PI / 180,
+                            carRotation[2] * Math.PI / 180
+                        );
+                    }
+                    if (carOffset) {
+                        carGroupRef.current.position.set(
+                            carOffset[0] || 0,
+                            carOffset[1] || 0,
+                            carOffset[2] || 0
+                        );
+                    }
                 }
-            }, [carRotation]);
+            }, [carRotation, carOffset]);
 
             // 2. ACTUALIZAR SOLO EL COCHE CUANDO CAMBIA LA URL
             useEffect(() => {
+                let isActive = true; // FIX: Prevenir race conditions al cambiar rápido
                 const carGroup = carGroupRef.current;
                 if (!carGroup || typeof THREE === 'undefined') return;
 
@@ -927,6 +1016,7 @@
                 if (carUrl) {
                     const loader = getGLTFLoader(rendererRef.current); // Usamos el loader global fortificado
                     loader.load(carUrl, (gltf) => {
+                        if (!isActive) return; // FIX: Ignorar cargas obsoletas si se navega muy rápido
                         const model = gltf.scene;
                         model.traverse(child => { 
                             if (child.isMesh) { 
@@ -948,7 +1038,8 @@
                                 
                                 if (child.material) { 
                                     if (child.material.isMeshStandardMaterial || child.material.isMeshPhysicalMaterial) { 
-                                        const newMat = new THREE.MeshLambertMaterial({ map: child.material.map, color: child.material.color, side: THREE.FrontSide }); 
+                                        // OPTIMIZACIÓN GARAJE: MeshPhongMaterial es muchísimo más rápido que Standard (PBR) y mantiene un brillo estupendo
+                                        const newMat = new THREE.MeshPhongMaterial({ map: child.material.map, color: child.material.color, shininess: 80, side: THREE.FrontSide }); 
                                         child.material.dispose(); 
                                         child.material = newMat; 
                                     } 
@@ -979,22 +1070,34 @@
                         const center = finalBox.getCenter(new THREE.Vector3());
                         const finalSize = finalBox.getSize(new THREE.Vector3());
                         
+                        const smartBottomY = getSmartBottomY(model);
+                        
                         model.position.x -= center.x;
                         model.position.z -= center.z;
-                        model.position.y -= finalBox.min.y;
+                        model.position.y -= smartBottomY; // Alineación matemática con la rueda
                         
                         // Restablecemos el anclaje exacto de la guía para los modelos estándar
                         model.position.z -= finalSize.z * 0.25;
 
+                        // --- NUEVO: SOMBRA FALSA OPTIMIZADA PARA EL GARAJE ---
+                        const tex = getFakeShadowTexture();
+                        const shadowW = finalSize.x * 1.4;
+                        const shadowL = finalSize.z * 1.3;
+                        const shadowGeo = new THREE.PlaneGeometry(shadowW, shadowL);
+                        shadowGeo.rotateX(-Math.PI / 2);
+                        const shadowMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.9, depthWrite: false, color: 0x000000 });
+                        const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+                        shadowMesh.position.set(0, 0.02, -finalSize.z * 0.25);
+                        
+                        // Apagar sombras reales masivas
+                        model.traverse(child => { if (child.isMesh) { child.castShadow = false; child.receiveShadow = false; } });
+                        
+                        carGroup.add(shadowMesh);
                         carGroup.add(model);
                     });
-                } else {
-                    const geom = new THREE.BoxGeometry(1.6, 0.4, 3.2);
-                    const mat = new THREE.MeshBasicMaterial({ color: 0x39ff14, wireframe: true, transparent: true, opacity: 0.5 });
-                    const box = new THREE.Mesh(geom, mat); box.position.y = -0.3; carGroup.add(box);
-                    const cockpitGeom = new THREE.BoxGeometry(1.2, 0.4, 1.2);
-                    const cockpit = new THREE.Mesh(cockpitGeom, mat); cockpit.position.set(0, 0.1, -0.2); carGroup.add(cockpit);
                 }
+
+                return () => { isActive = false; };
             }, [carUrl]);
 
             return <div ref={mountRef} className="absolute inset-0 z-0 pointer-events-auto cursor-move opacity-100" />;
@@ -1017,7 +1120,29 @@
             const [targetId, setTargetId] = useState(1); 
             const [cameraMode, setCameraMode] = useState('CHASE'); 
             const cameraModeRef = useRef('CHASE');
+            const [isNightMode, setIsNightMode] = useState(false);
+            const isNightModeRef = useRef(isNightMode);
             
+            // NUEVO: Planos de recorte global para asegurar que las sombras de los árboles no salgan del tablero
+            const shadowClippingPlanesRef = useRef([
+                new THREE.Plane(new THREE.Vector3(-1, 0, 0), 10000), // Derecha
+                new THREE.Plane(new THREE.Vector3(1, 0, 0), 10000),  // Izquierda
+                new THREE.Plane(new THREE.Vector3(0, 0, -1), 10000), // Abajo
+                new THREE.Plane(new THREE.Vector3(0, 0, 1), 10000)   // Arriba
+            ]);
+            
+            // NUEVO ESTADO: Pantalla Pre-Carrera
+            const [isPreRace, setIsPreRace] = useState(true);
+            const isPreRaceRef = useRef(isPreRace);
+            useEffect(() => { isPreRaceRef.current = isPreRace; }, [isPreRace]);
+            
+            // FIX: Sincronizar el estado de Pantalla Completa si el usuario pulsa ESC
+            useEffect(() => {
+                const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+                document.addEventListener('fullscreenchange', handleFsChange);
+                return () => document.removeEventListener('fullscreenchange', handleFsChange);
+            }, []);
+
             const [showResults, setShowResults] = useState(false);
             const [raceResultsData, setRaceResultsData] = useState(null);
             const lapTimesRef = useRef([
@@ -1131,6 +1256,7 @@
                 }
             };
 
+            const startRaceSequenceRef = useRef(null);
             const startRaceSequence = () => {
                 setCountdown(null);
                 playCommentary('start');
@@ -1143,9 +1269,12 @@
                 setTimeout(() => { setCountdown(0); playRaceSound('green'); playCommentary('green'); }, 7500);
                 setTimeout(() => setCountdown(null), 9500);
             };
+            startRaceSequenceRef.current = startRaceSequence;
 
+            // Se elimina el auto-arranque del semáforo. Ahora espera a que el usuario pulse "IR A LA PARRILLA".
             useEffect(() => {
-                if (sceneReady) {
+                if (sceneReady && !isPreRaceRef.current) {
+                    // Si ya estaba listo y no está en pre-race, arranca.
                     startRaceSequence();
                 }
             }, [sceneReady]);
@@ -1180,7 +1309,9 @@
                 if (throttleTextRef.current) { throttleTextRef.current.textContent = '0'; throttleTextRef.current.className = 'font-digital font-black text-5xl italic drop-shadow-[0_2px_4px_rgba(0,0,0,1)] text-gray-700'; }
                 if (throttleLabelRef.current) throttleLabelRef.current.className = 'text-[14px] font-black uppercase tracking-[0.2em] drop-shadow-[0_2px_4px_rgba(0,0,0,1)] text-gray-600';
                 
-                startRaceSequence();
+                // Mostrar Pizarra Pre-Carrera en lugar de arrancar del tirón
+                setIsPreRace(true);
+                setCountdown(null);
                 
                 if (fromNetwork !== true && peerConn && peerConn.open) {
                     peerConn.send({ type: 'RESTART' });
@@ -1213,6 +1344,7 @@
             const rallyDistancesRef = useRef([]);
 
             useEffect(() => { cameraModeRef.current = cameraMode; }, [cameraMode]);
+            useEffect(() => { isNightModeRef.current = isNightMode; }, [isNightMode]);
 
             const handleModelAssign = (file, id, type) => { if(onCarAssetUpdate) onCarAssetUpdate(file, id, type); };
             const handleCarTransform = (id, transformData) => { if(onCarAssetUpdate) onCarAssetUpdate(null, id, transformData); };
@@ -1247,6 +1379,10 @@
                 if (networkData) {
                     if (networkData.type === 'RESTART') {
                         if (handleRestartRaceRef.current) handleRestartRaceRef.current(true);
+                    } else if (networkData.type === 'START_RACE_SYNC') {
+                        setTargetLaps(networkData.targetLaps || 10);
+                        setIsPreRace(false);
+                        if (startRaceSequenceRef.current) startRaceSequenceRef.current();
                     } else {
                         remoteStateRef.current = networkData;
                     }
@@ -1268,27 +1404,38 @@
                 if (boardMeshRef.current) {
                     const mesh = boardMeshRef.current;
                     mesh.visible = boardSettings.visible;
-                    mesh.scale.set(boardSettings.width, 2.0, boardSettings.depth);
+                    
+                    // Si es PlaneGeometry (Terreno PS3), la altura (Y) se queda en 1.0 para no distorsionar las montañas
+                    mesh.scale.set(boardSettings.width, mesh.geometry.type === 'PlaneGeometry' ? 1.0 : 2.0, boardSettings.depth);
                     mesh.position.x = boardSettings.x;
                     mesh.position.z = boardSettings.z;
                     mesh.position.y = -0.5; 
                     
-                    if (Array.isArray(mesh.material)) {
-                        const topMat = mesh.material[2]; 
-                        if (boardSettings.material === 'grass') { topMat.color.setHex(0xffffff); if(topMat.userData.grassMap) topMat.map = topMat.userData.grassMap; } 
-                        else if (boardSettings.material === 'wood') { topMat.color.setHex(0xffffff); if(topMat.userData.woodMap) topMat.map = topMat.userData.woodMap; } 
-                        else if (boardSettings.material === 'asphalt') { topMat.map = null; topMat.color.setHex(0x555555); }
-                        topMat.needsUpdate = true;
-                        if (topMat.map) { topMat.map.repeat.set(boardSettings.width / 100, boardSettings.depth / 100); }
-                        const sideMat = mesh.material[0]; 
-                        if (sideMat.map) { sideMat.map.repeat.set(Math.max(boardSettings.width, boardSettings.depth) / 100, 1); }
-                    }
+                    const mat = Array.isArray(mesh.material) ? mesh.material[2] : mesh.material;
+                    
+                    if (boardSettings.material === 'grass') { mat.color.setHex(0xffffff); if(mat.userData.grassMap) mat.map = mat.userData.grassMap; if(mat.vertexColors !== undefined) mat.vertexColors = true; } 
+                    else if (boardSettings.material === 'wood') { mat.color.setHex(0xffffff); if(mat.userData.woodMap) mat.map = mat.userData.woodMap; if(mat.vertexColors !== undefined) mat.vertexColors = false; } 
+                    else if (boardSettings.material === 'asphalt') { mat.map = null; mat.color.setHex(0x555555); if(mat.vertexColors !== undefined) mat.vertexColors = false; }
+                    mat.needsUpdate = true;
+                    
+                    if (mat.map) { mat.map.repeat.set(boardSettings.width / (mesh.geometry.type === 'PlaneGeometry' ? 50 : 100), boardSettings.depth / (mesh.geometry.type === 'PlaneGeometry' ? 50 : 100)); }
                 }
+
+                // ACTUALIZAR PLANOS DE CORTE DE SOMBRAS AL TAMAÑO DEL TABLERO
+                const hw = boardSettings.width / 2;
+                const hd = boardSettings.depth / 2;
+                shadowClippingPlanesRef.current[0].constant = boardSettings.x + hw;
+                shadowClippingPlanesRef.current[1].constant = -(boardSettings.x - hw);
+                shadowClippingPlanesRef.current[2].constant = boardSettings.z + hd;
+                shadowClippingPlanesRef.current[3].constant = -(boardSettings.z - hd);
+
             }, [boardSettings]);
             
             const fitBoardToTrack = () => {
                 if (trackBaseSizeRef.current.width > 0) {
-                    setBoardSettings(prev => ({ ...prev, width: Math.ceil(trackBaseSizeRef.current.width) + 30, depth: Math.ceil(trackBaseSizeRef.current.depth) + 30, x: 0, z: 0, visible: true }));
+                    const multi = boardMeshRef.current?.geometry.type === 'PlaneGeometry' ? 4 : 1;
+                    const padding = boardMeshRef.current?.geometry.type === 'PlaneGeometry' ? 0 : 30;
+                    setBoardSettings(prev => ({ ...prev, width: Math.ceil(trackBaseSizeRef.current.width) * multi + padding, depth: Math.ceil(trackBaseSizeRef.current.depth) * multi + padding, x: 0, z: 0, visible: true }));
                 }
             };
             
@@ -1296,23 +1443,21 @@
             const createWoodTexture = () => { const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#654321'; ctx.fillRect(0, 0, 512, 512); for (let i = 0; i < 600; i++) { ctx.fillStyle = Math.random() > 0.5 ? '#5C4033' : '#3e2723'; const x = Math.random() * 512; const y = Math.random() * 512; const w = Math.random() * 100 + 50; const h = Math.random() * 4 + 1; ctx.fillRect(x, y, w, h); } const texture = new THREE.CanvasTexture(canvas); texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; return texture; };
             const createStoneTexture = () => { const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#6b7280'; ctx.fillRect(0, 0, 512, 512); for (let i = 0; i < 150; i++) { ctx.fillStyle = Math.random() > 0.5 ? '#4b5563' : '#9ca3af'; const x = Math.random() * 600 - 50; const y = Math.random() * 600 - 50; const w = Math.random() * 160 + 60; const h = Math.random() * 80 + 30; ctx.fillRect(x, y, w, h); ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 4; ctx.strokeRect(x,y,w,h); } const texture = new THREE.CanvasTexture(canvas); texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(0.5, 0.5); return texture; };
             const createKerbTexture = () => { const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 64; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ef4444'; ctx.fillRect(0, 0, 64, 64); ctx.fillStyle = '#ffffff'; ctx.fillRect(64, 0, 64, 64); const texture = new THREE.CanvasTexture(canvas); texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; return texture; };
-            const createAsphaltTexture = () => { const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#1e1e1e'; ctx.fillRect(0, 0, 256, 256); for (let i = 0; i < 8000; i++) { ctx.fillStyle = Math.random() > 0.5 ? '#151515' : '#2b2b2b'; ctx.fillRect(Math.random() * 256, Math.random() * 256, 1.5, 1.5); } const texture = new THREE.CanvasTexture(canvas); texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(3, 3); return texture; };
+            const createWallTexture = () => { const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#dd1111'; ctx.fillRect(0, 0, 128, 128); ctx.fillStyle = '#eeeeee'; ctx.fillRect(128, 0, 128, 128); ctx.fillStyle = '#222222'; ctx.fillRect(0, 0, 256, 16); ctx.fillStyle = '#444444'; ctx.fillRect(0, 16, 256, 8); const texture = new THREE.CanvasTexture(canvas); texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; return texture; };
+            const createAsphaltTexture = () => { const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#222222'; ctx.fillRect(0, 0, 512, 512); for (let i = 0; i < 15000; i++) { ctx.fillStyle = Math.random() > 0.5 ? '#111111' : '#333333'; ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2); } const texture = new THREE.CanvasTexture(canvas); texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(6, 6); return texture; };
             const createCar = (id, color) => { 
                 const pg = new THREE.Group(), vg = new THREE.Group(); 
                 pg.add(vg); 
-                const dummyModel = new THREE.Group();
-                dummyModel.userData.carSize = new THREE.Vector3(4.5, 1.2, 9);
-                const bm = new THREE.MeshLambertMaterial({ color }); 
-                const bg = new THREE.BoxGeometry(4.5, 1.2, 9), b = new THREE.Mesh(bg, bm); 
-                b.position.y = 0.8; b.castShadow = true; dummyModel.add(b); 
-                const cg = new THREE.BoxGeometry(3.5, 0.8, 4), cm = new THREE.MeshLambertMaterial({ color: 0x111111 }), c = new THREE.Mesh(cg, cm); 
-                c.position.set(0, 1.8, -1.5); dummyModel.add(c); 
-                const wg = new THREE.CylinderGeometry(1.2, 1.2, 0.8, 16); wg.rotateZ(Math.PI/2); const wm = new THREE.MeshLambertMaterial({ color: 0x222222 }); 
-                [[-2.5, 3], [2.5, 3], [-2.5, -3], [2.5, -3]].forEach(p => { const w = new THREE.Mesh(wg, wm); w.position.set(p[0], 1.2, p[1]); dummyModel.add(w); }); 
                 
-                dummyModel.position.z -= 9 * 0.25;
+                // --- Sombra Falsa Inicial Cero Cálculos ---
+                const tex = getFakeShadowTexture();
+                const shadowGeo = new THREE.PlaneGeometry(4.5 * 1.4, 9 * 1.3);
+                shadowGeo.rotateX(-Math.PI / 2);
+                const shadowMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.9, depthWrite: false, color: 0x000000 });
+                const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+                shadowMesh.position.set(0, 0.1, -9 * 0.25);
+                vg.add(shadowMesh);
                 
-                vg.add(dummyModel);
                 return pg; 
             };
 
@@ -1344,7 +1489,17 @@
                 const trackWidth = brandData.width || 18.0;
 
                 let isDragging = false; let previousTouch = { x: 0, y: 0 }; let previousPinchDist = 0;
-                const onResize = () => { if (camera && renderer) { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); } };
+                
+                // FIX RENDER: Recalcular Pixel Ratio dinámico al entrar/salir de pantalla completa para no saturar la GPU
+                const onResize = () => { 
+                    if (camera && renderer) { 
+                        camera.aspect = window.innerWidth / window.innerHeight; 
+                        camera.updateProjectionMatrix(); 
+                        renderer.setSize(window.innerWidth, window.innerHeight); 
+                        renderer.setPixelRatio(getQualitySettings(qualityMode).pr);
+                    } 
+                };
+                
                 const onMouseDown = (e) => { isDragging=true; previousTouch={x:e.clientX, y:e.clientY}; };
                 const onMouseMove = (e) => { if(!isDragging) return; spherical.theta -= (e.clientX-previousTouch.x)*0.005; spherical.phi -= (e.clientY-previousTouch.y)*0.005; spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi)); spherical.makeSafe(); previousTouch={x:e.clientX, y:e.clientY}; };
                 const onMouseUp = () => isDragging=false;
@@ -1361,11 +1516,60 @@
                     const asphaltDistances = []; 
                     
                     let accumulatedDist = 0;
-                    // Fondo alegre color azul cielo (Sky Blue) simulando un día soleado
-                    scene = new THREE.Scene(); scene.background = new THREE.Color(0x87ceeb); scene.fog = new THREE.Fog(0x87ceeb, 500, 20000); 
+                    scene = new THREE.Scene(); 
                     sceneRef.current = scene;
-                    // Cuadrícula blanca sutil en lugar de verde neón para combinar con el cielo
-                    const gridHelper = new THREE.GridHelper(10000, 200, 0xffffff, 0xffffff); gridHelper.position.y = -0.5; gridHelper.material.transparent = true; gridHelper.material.opacity = 0.25; scene.add(gridHelper);
+
+                    // --- CIELO REALISTA TIPO PS3 (HDRI Procedural) ---
+                    const skyCanvas = document.createElement('canvas');
+                    skyCanvas.width = 2048; skyCanvas.height = 1024;
+                    const skyTex = new THREE.CanvasTexture(skyCanvas);
+                    skyTex.mapping = THREE.EquirectangularReflectionMapping;
+                    scene.background = skyTex;
+                    scene.environment = skyTex; 
+                    scene.fog = new THREE.FogExp2(0xf97316, 0.0015);
+
+                    const updateSky = (night) => {
+                        const skyCtx = skyCanvas.getContext('2d');
+                        const skyGrad = skyCtx.createLinearGradient(0, 0, 0, 1024);
+                        
+                        if (night) {
+                            skyGrad.addColorStop(0.0, '#020617');  
+                            skyGrad.addColorStop(0.5, '#0f172a');  
+                            skyGrad.addColorStop(1.0, '#000000');  
+                        } else {
+                            skyGrad.addColorStop(0.0, '#0f172a');  
+                            skyGrad.addColorStop(0.3, '#3b82f6');  
+                            skyGrad.addColorStop(0.48, '#fcd34d'); 
+                            skyGrad.addColorStop(0.5, '#f97316');  
+                            skyGrad.addColorStop(0.52, '#1e293b'); 
+                            skyGrad.addColorStop(1.0, '#020617');  
+                        }
+                        
+                        skyCtx.fillStyle = skyGrad;
+                        skyCtx.fillRect(0, 0, 2048, 1024);
+                        
+                        skyCtx.beginPath();
+                        skyCtx.arc(1024, night ? 300 : 490, night ? 15 : 25, 0, Math.PI * 2);
+                        skyCtx.fillStyle = night ? '#e2e8f0' : '#ffffff';
+                        skyCtx.shadowColor = night ? '#e2e8f0' : '#fcd34d';
+                        skyCtx.shadowBlur = night ? 30 : 80;
+                        skyCtx.fill(); skyCtx.fill(); 
+                        
+                        if (night) {
+                            for(let i=0; i<300; i++) {
+                                skyCtx.fillStyle = `rgba(255,255,255,${Math.random() * 0.8 + 0.2})`;
+                                skyCtx.fillRect(Math.random() * 2048, Math.random() * 1024, Math.random() * 2.5, Math.random() * 2.5);
+                            }
+                        }
+                        
+                        skyTex.needsUpdate = true;
+                        scene.fog.color.setHex(night ? 0x0f172a : 0xf97316);
+                        scene.fog.density = night ? 0.003 : 0.0015;
+                    };
+                    scene.userData.updateSky = updateSky;
+                    updateSky(isNightModeRef.current);
+                    
+                    const gridHelper = new THREE.GridHelper(10000, 200, 0xf97316, 0xf97316); gridHelper.position.y = -0.5; gridHelper.material.transparent = true; gridHelper.material.opacity = 0.15; scene.add(gridHelper);
                     
                     const qSettings = getQualitySettings(qualityMode);
                     camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 20000); 
@@ -1374,12 +1578,18 @@
                     renderer.shadowMap.enabled = qSettings.shadow; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
                     renderer.outputEncoding = THREE.sRGBEncoding;
                     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                    renderer.toneMappingExposure = 0.8; // Exposición reducida en la pista principal
+                    renderer.toneMappingExposure = 1.0; 
+                    renderer.localClippingEnabled = true; 
                     rendererRef.current = renderer;
                     while(containerRef.current.firstChild) containerRef.current.removeChild(containerRef.current.firstChild); containerRef.current.appendChild(renderer.domElement);
-                    scene.add(new THREE.AmbientLight(0xffffff, 0.35)); // Luz ambiente suavizada
-                    const dl = new THREE.DirectionalLight(0xffffff, 0.8); // Sol menos intenso
-                    dl.position.set(100, 300, 50); dl.castShadow = qSettings.shadow; dl.shadow.mapSize.width = 1024; dl.shadow.mapSize.height = 1024;
+                    
+                    const ambLight = new THREE.AmbientLight(0xffedd5, 0.4);
+                    scene.add(ambLight); 
+                    scene.userData.ambientLight = ambLight;
+
+                    const dl = new THREE.DirectionalLight(0xfffae8, 1.2); // Luz de Sol directa y brillante
+                    dl.position.set(0, 100, -300); // Sol bajo en el horizonte apuntando hacia los coches
+                    dl.castShadow = qSettings.shadow; dl.shadow.mapSize.width = 512; dl.shadow.mapSize.height = 512; // OPTIMIZADO: Sombras de 1024 a 512px
                     dl.shadow.camera.near = 0.5; dl.shadow.camera.far = 1500; dl.shadow.camera.left = -400; dl.shadow.camera.right = 400; dl.shadow.camera.top = 400; dl.shadow.camera.bottom = -400; dl.shadow.bias = -0.001; scene.add(dl);
                     dirLightRef.current = dl;
                     
@@ -1415,7 +1625,7 @@
                     const easeSine = (t) => (1 - Math.cos(t * Math.PI)) / 2;
                     const cubicBezier = (p0, p1, p2, p3, t) => { const u = 1 - t; return (u*u*u * p0) + (3*u*u*t * p1) + (3*u*t*t * p2) + (t*t*t * p3); };
 
-                    const resMult = 1.5;
+                    const resMult = 0.5; // OPTIMIZADO: Balance perfecto entre rendimiento y suavidad en las curvas
 
                     circuitData.pieces.forEach((p, index) => {
                         if (p.subtype === 'rotonda' || p.name === 'Rotonda') {
@@ -1456,7 +1666,7 @@
 
                         const startDist = accumulatedDist; const startVertexIdx = rails.lane1.length - 1;
                         
-                        const steps = (p.type === 'curve') ? Math.max(12, Math.ceil(Math.abs(p.angle) * 1.5 * resMult)) : Math.max(10, Math.ceil((p.length / 3.0) * resMult));
+                        const steps = (p.type === 'curve') ? Math.max(6, Math.ceil(Math.abs(p.angle) * 1.5 * resMult)) : Math.max(4, Math.ceil((p.length / 3.0) * resMult));
                         
                         const stepLen = p.length / steps; const totalSweep = (p.type==='curve') ? (p.angle * Math.PI / 180) * (p.direction==='left'?-1:1) : 0; const stepAngle = totalSweep / steps;
                         let stepPhysDist = stepLen; if (p.type === 'curve') stepPhysDist = (2 * Math.PI * p.radius) * (Math.abs(p.angle) / 360) / steps;
@@ -1500,8 +1710,14 @@
                         }
                         if (d12.length > 0) rails.changes.push({ points: d12, refIdx: startVertexIdx, count: steps, from: 0, to: 1, isChange: true });
                         if (d21.length > 0) rails.changes.push({ points: d21, refIdx: startVertexIdx, count: steps, from: 1, to: 0, isChange: true });
-                        if (isPitEntry) rails.changes.push({ refIdx: startVertexIdx, count: steps, isPitEntry: true, pitSide });
-                        if (isPitExit) rails.changes.push({ refIdx: startVertexIdx, count: steps, isPitExit: true, pitSide });
+                        if (isPitEntry) {
+                            const reqLane = (pitSide === 'right') ? (sL1 > 0 ? 0 : 1) : (sL1 < 0 ? 0 : 1);
+                            rails.changes.push({ refIdx: startVertexIdx, count: steps, isPitEntry: true, pitSide, reqLane });
+                        }
+                        if (isPitExit) {
+                            const outLane = (pitSide === 'right') ? (sL1 > 0 ? 0 : 1) : (sL1 < 0 ? 0 : 1);
+                            rails.changes.push({ refIdx: startVertexIdx, count: steps, isPitExit: true, pitSide, outLane });
+                        }
                         pieceMapRef.current.push({ index, distStart: accumulatedDist-p.length, distEnd: accumulatedDist, type: p.type, subtype: p.subtype, invert: p.invert, elevation: p.elevation || 0 });
                     });
                     
@@ -1726,7 +1942,7 @@
                         });
 
                         // Laplacian Smoothing
-                        let passes = 8; 
+                        let passes = 2; // OPTIMIZADO: De 8 a 2 pasadas. Suficiente para suavizar sin matar la CPU
                         if (passes > 0) {
                             for (let p = 0; p < passes; p++) {
                                 const smoothSpline = (arr) => {
@@ -1833,6 +2049,7 @@
                         bottomGeom.computeVertexNormals();
 
                         const stoneTex = createStoneTexture();
+                        // UPGRADE RENDIMIENTO: Material Lambert en lugar de Standard (PBR) para muros
                         const structMat = new THREE.MeshLambertMaterial({ 
                             map: stoneTex,
                             color: 0xaaaaaa, 
@@ -1840,13 +2057,13 @@
                         });
 
                         const wallMesh = new THREE.Mesh(wallGeom, structMat);
-                        wallMesh.receiveShadow = true; 
-                        wallMesh.castShadow = true;
+                        wallMesh.receiveShadow = false; // OPTIMIZADO: Quitar sombras a estructuras gigantes
+                        wallMesh.castShadow = false;
                         trackGroup.add(wallMesh);
 
                         const bottomMesh = new THREE.Mesh(bottomGeom, structMat);
-                        bottomMesh.receiveShadow = true; 
-                        bottomMesh.castShadow = true;
+                        bottomMesh.receiveShadow = false; // OPTIMIZADO: Quitar sombras a estructuras gigantes
+                        bottomMesh.castShadow = false;
                         trackGroup.add(bottomMesh);
                     };
                     buildWallsAndTunnels();
@@ -1879,37 +2096,48 @@
                          else guardrailPoints.outer.push(null);
                     }
 
+                    const wallTex = createWallTexture();
                     const createSingleGuardrailMesh = (points) => {
                         if (points.length < 2) return;
                         const curve = new THREE.CatmullRomCurve3(points);
-                        
-                        const railMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.6, roughness: 0.4 }); 
-                        
-                        [0.35, 0.75].forEach(hOffset => {
-                            // OPTIMIZACIÓN: Menos segmentos (points.length en vez de *2) y solo 3 caras radiales
-                            const geom = new THREE.TubeGeometry(curve, Math.max(10, Math.floor(points.length * 0.8)), 0.1, 3, false);
-                            const mesh = new THREE.Mesh(geom, railMat);
-                            mesh.position.y = hOffset;
-                            mesh.castShadow = false; // Sin sombras pesadas
-                            trackGroup.add(mesh);
-                        });
+                        const pts = curve.getPoints(Math.max(20, points.length * 4)); // Trazado más suave
 
-                        // OPTIMIZACIÓN: Usar BoxGeometry es 10 veces más rápido que CylinderGeometry para los postes
-                        const postGeom = new THREE.BoxGeometry(0.12, 1.8, 0.12); 
-                        const postMat = new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.8, roughness: 0.3 }); 
-                        let curveLen = curve.getLength();
-                        let numPosts = Math.max(2, Math.floor(curveLen / 4.0)); // Postes más espaciados
-                        
-                        for(let i=0; i<=numPosts; i++) {
-                            let t = i / numPosts;
-                            let pt = curve.getPointAt(t);
-                            let post = new THREE.Mesh(postGeom, postMat);
-                            post.position.copy(pt);
-                            
-                            post.position.y += 0.15; 
-                            post.castShadow = false;
-                            trackGroup.add(post);
+                        const verts = []; const uvs = []; const indices = [];
+                        const h = 2.5; const t = 0.3;
+
+                        for (let i = 0; i < pts.length; i++) {
+                            const p = pts[i];
+                            let fwd = new THREE.Vector3();
+                            if (i < pts.length - 1) fwd.subVectors(pts[i+1], p).normalize();
+                            else fwd.subVectors(p, pts[i-1]).normalize();
+                            const up = new THREE.Vector3(0, 1, 0);
+                            const right = new THREE.Vector3().crossVectors(fwd, up).normalize();
+
+                            verts.push(p.x, p.y, p.z);
+                            verts.push(p.x + right.x * t, p.y, p.z + right.z * t);
+                            verts.push(p.x, p.y + h, p.z);
+                            verts.push(p.x + right.x * t, p.y + h, p.z + right.z * t);
+
+                            const u = i / pts.length * (curve.getLength() / 10.0);
+                            uvs.push(u, 1); uvs.push(u, 1); uvs.push(u, 0); uvs.push(u, 0);
+
+                            if (i > 0) {
+                                const c = i * 4; const pr = (i - 1) * 4;
+                                indices.push(pr, c, pr + 2); indices.push(pr + 2, c, c + 2);
+                                indices.push(pr + 1, pr + 3, c + 1); indices.push(pr + 3, c + 3, c + 1);
+                                indices.push(pr + 2, c + 2, pr + 3); indices.push(pr + 3, c + 2, c + 3);
+                            }
                         }
+                        const geo = new THREE.BufferGeometry();
+                        geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+                        geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+                        geo.setIndex(indices);
+                        geo.computeVertexNormals();
+
+                        const mat = new THREE.MeshLambertMaterial({ map: wallTex, side: THREE.DoubleSide });
+                        const mesh = new THREE.Mesh(geo, mat);
+                        mesh.castShadow = false;
+                        trackGroup.add(mesh);
                     };
 
                     const createGuardrailMeshes = (guardrailArray) => {
@@ -1933,15 +2161,56 @@
                     for (let i = 0; i < borders.outer.length; i++) { if (borders.outer[i] && borders.outer[i].y > MAX_KERB_HEIGHT) borders.outer[i] = null; }
 
                     const kerbTexture = createKerbTexture();
-                    // OPTIMIZACIÓN: Reducción de polígonos en pianos y sombras anuladas
-                    const createSingleBorderMesh = (points) => { if (points.length < 2) return; const curve = new THREE.CatmullRomCurve3(points); const geometry = new THREE.TubeGeometry(curve, Math.max(10, Math.floor(points.length * 0.8)), 1.4, 4, false); const material = new THREE.MeshLambertMaterial({ map: kerbTexture }); kerbTexture.repeat.set(points.length / 4, 1); const mesh = new THREE.Mesh(geometry, material); mesh.scale.y = 0.15; mesh.position.y = 0.05; mesh.castShadow = false; mesh.receiveShadow = false; trackGroup.add(mesh); };
+                    const createSingleBorderMesh = (points) => { 
+                        if (points.length < 2) return; 
+                        const curve = new THREE.CatmullRomCurve3(points); 
+                        const geometry = new THREE.TubeGeometry(curve, Math.max(12, Math.floor(points.length * 2)), 1.4, 2, false); // Pianos suaves
+                        // UPGRADE RENDIMIENTO: Lambert para pianos
+                        const material = new THREE.MeshLambertMaterial({ map: kerbTexture }); 
+                        kerbTexture.repeat.set(points.length / 4, 1); 
+                        const mesh = new THREE.Mesh(geometry, material); 
+                        mesh.scale.y = 0.15; mesh.position.y = 0.05; mesh.castShadow = false; mesh.receiveShadow = false; trackGroup.add(mesh); 
+                    };
                     const createBorderMeshes = (borderArray) => { let currentSegment = []; for (let i = 0; i < borderArray.length; i++) { if (borderArray[i] !== null) { currentSegment.push(borderArray[i]); } else { if (currentSegment.length > 1) createSingleBorderMesh(currentSegment); currentSegment = []; } } if (currentSegment.length > 1) createSingleBorderMesh(currentSegment); };
                     createBorderMeshes(borders.inner); createBorderMeshes(borders.outer);
 
                     const centers = []; for(let k=0; k<rails.lane1.length; k++) { if(rails.lane1[k] && rails.lane2[k]) { centers.push(new THREE.Vector3().lerpVectors(rails.lane1[k], rails.lane2[k], 0.5)); } } trackCenterPointsRef.current = centers;
                     
-                    // OPTIMIZACIÓN: Raíles metálicos mucho más simples (3 caras en lugar de 4 y menos resolución longitudinal)
-                    const createRailMesh = (pts) => { const cp = pts.filter(p => p !== null); if(cp.length < 2) return; const path = new THREE.CatmullRomCurve3(cp); const g = new THREE.TubeGeometry(path, Math.max(10, cp.length), 0.25, 3, false); const m = new THREE.MeshLambertMaterial({ color: 0xcccccc }); const mesh = new THREE.Mesh(g, m); mesh.castShadow = false; trackGroup.add(mesh); };
+                    // UPGRADE: Raíles realistas tipo Scalextric (2 guías metálicas + 1 gap central)
+                    const createRailMesh = (pts) => { 
+                        const cp = pts.filter(p => p !== null); if(cp.length < 2) return; 
+                        const p1 = []; const p2 = [];
+                        for (let i = 0; i < cp.length; i++) {
+                            const curr = cp[i];
+                            let fwd = new THREE.Vector3();
+                            if (i < cp.length - 1) fwd.subVectors(cp[i+1], curr).normalize();
+                            else fwd.subVectors(curr, cp[i-1]).normalize();
+                            const up = new THREE.Vector3(0, 1, 0);
+                            const right = new THREE.Vector3().crossVectors(fwd, up).normalize();
+
+                            p1.push(curr.clone().addScaledVector(right, 0.35));
+                            p2.push(curr.clone().addScaledVector(right, -0.35));
+                        }
+
+                        const segs = Math.max(16, Math.floor(cp.length * 4)); // Multiplicador alto para raíles perfectos
+                        const c1 = new THREE.CatmullRomCurve3(p1);
+                        const c2 = new THREE.CatmullRomCurve3(p2);
+                        const cMid = new THREE.CatmullRomCurve3(cp);
+
+                        const mMetal = new THREE.MeshPhongMaterial({ color: 0xeeeeee, shininess: 100 });
+                        const mSlot = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+                        const g1 = new THREE.TubeGeometry(c1, segs, 0.15, 3, false);
+                        const mesh1 = new THREE.Mesh(g1, mMetal); trackGroup.add(mesh1);
+
+                        const g2 = new THREE.TubeGeometry(c2, segs, 0.15, 3, false);
+                        const mesh2 = new THREE.Mesh(g2, mMetal); trackGroup.add(mesh2);
+
+                        const gMid = new THREE.TubeGeometry(cMid, segs, 0.12, 3, false);
+                        const meshMid = new THREE.Mesh(gMid, mSlot);
+                        meshMid.position.y -= 0.05; // Hunde el hueco
+                        trackGroup.add(meshMid);
+                    };
                     const createMultiSegmentRailMesh = (points) => { let currentSegment = []; for (let p of points) { if (p === null) { if (currentSegment.length > 1) createRailMesh(currentSegment); currentSegment = []; } else { currentSegment.push(p); } } if (currentSegment.length > 1) createRailMesh(currentSegment); };
                     createMultiSegmentRailMesh(rails.lane1); createMultiSegmentRailMesh(rails.lane2); createMultiSegmentRailMesh(rails.pit);
                     rails.changes.forEach(changeItem => { 
@@ -1956,9 +2225,15 @@
                     for (let i = 0; i < aspVertCount - 1; i++) { const tl = i * 2; const tr = i * 2 + 1; const ntl = (i + 1) * 2; const ntr = (i + 1) * 2 + 1; const bl = tl + totalTopVerts; const br = tr + totalTopVerts; const nbl = ntl + totalTopVerts; const nbr = ntr + totalTopVerts; solidIndices.push(tl, bl, ntl); solidIndices.push(bl, nbl, ntl); solidIndices.push(tr, ntr, br); solidIndices.push(ntr, nbr, br); }
                     const ag = new THREE.BufferGeometry(); ag.setAttribute('position', new THREE.Float32BufferAttribute(solidVerts, 3)); ag.setAttribute('uv', new THREE.Float32BufferAttribute(solidUVs, 2)); ag.setIndex(solidIndices); ag.computeVertexNormals(); 
                     
-                    // OPTIMIZACIÓN: El asfalto base no necesita proyectar sombras, solo recibirlas
                     const asphaltTex = createAsphaltTexture();
-                    const am = new THREE.Mesh(ag, new THREE.MeshLambertMaterial({ map: asphaltTex, color: 0xdddddd, side: THREE.DoubleSide })); 
+                    // UPGRADE RENDIMIENTO: Asfalto usa Phong en lugar de Standard
+                    const am = new THREE.Mesh(ag, new THREE.MeshPhongMaterial({ 
+                        map: asphaltTex, 
+                        bumpMap: asphaltTex,   
+                        bumpScale: 0.05,       
+                        color: 0x888888, 
+                        side: THREE.DoubleSide 
+                    })); 
                     am.receiveShadow = true; am.castShadow = false; am.position.y = 0.0; trackGroup.add(am);
                     
                     carMeshesRef.current = [];
@@ -1971,14 +2246,81 @@
                         const center = b.getCenter(new THREE.Vector3()); const size = b.getSize(new THREE.Vector3()); trackGroup.position.sub(center); trackGroup.position.y = 0.8; 
                         pathPoints.forEach(p => p.sub(center)); pathPointsRef.current = pathPoints;
                         trackBaseSizeRef.current = { width: size.x, depth: size.z };
-                        const bWidth = size.x + 40; const bDepth = size.z + 40;
+                        
                         const grassTex = createGrassTexture(); const woodTex = createWoodTexture();
-                        const boardGeo = new THREE.BoxGeometry(1, 1, 1); 
-                        const topMat = new THREE.MeshLambertMaterial({ map: grassTex }); topMat.userData.grassMap = grassTex; topMat.userData.woodMap = woodTex;
-                        const sideMat = new THREE.MeshLambertMaterial({ map: woodTex }); const bottomMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
-                        const boardMaterials = [ sideMat, sideMat, topMat, bottomMat, sideMat, sideMat ];
-                        const boardMesh = new THREE.Mesh(boardGeo, boardMaterials); boardMesh.scale.set(bWidth, 2.0, bDepth); boardMesh.position.y = -0.5; boardMesh.receiveShadow = true; scene.add(boardMesh); boardMeshRef.current = boardMesh; 
-                        setBoardSettings(prev => ({ ...prev, width: bWidth, depth: bDepth, x: 0, z: 0, material: 'grass' }));
+                        
+                        // --- 1. TERRENO TIPO MAQUETA AJUSTADO ---
+                        const padding = 70; // Margen muy ajustado alrededor de la pista (35 por lado)
+                        const baseW = size.x + padding; 
+                        const baseD = size.z + padding;
+                        const terrainGeo = new THREE.PlaneGeometry(baseW, baseD, 24, 24); // OPTIMIZADO: Mitad de subdivisiones (4x menos polígonos)
+                        terrainGeo.rotateX(-Math.PI / 2);
+                        
+                        const posAttr = terrainGeo.attributes.position;
+                        const colors = [];
+                        const colorGrass = new THREE.Color('#2d4c1e'); // Hierba realista
+                        const colorRock = new THREE.Color('#5c5346');  // Gris piedra
+                        const tempColor = new THREE.Color();
+                        const trackRadius = Math.max(size.x, size.z) / 2 + 5; // Radio ceñido
+                        
+                        // Fórmula matemática de colinas suaves para tablero (OPTIMIZADA)
+                        const getTerrainHeight = (vx, vz, dist) => {
+                            if (dist <= trackRadius) return 0;
+                            const blend = dist - trackRadius > 10.0 ? 1.0 : (dist - trackRadius) * 0.1;
+                            // OPTIMIZADO: Un solo cálculo de ruido en lugar de dos reduce la carga matemática un 50%
+                            const noise = Math.sin(vx * 0.15) * Math.cos(vz * 0.15) * 2.5;
+                            const valleyRise = (dist - trackRadius) * 0.15;
+                            return (noise + valleyRise) * blend;
+                        };
+
+                        for (let i = 0; i < posAttr.count; i++) {
+                            const vx = posAttr.getX(i);
+                            const vz = posAttr.getZ(i);
+                            const distFromCenter = Math.sqrt(vx*vx + vz*vz);
+                            const vy = getTerrainHeight(vx, vz, distFromCenter);
+                            
+                            posAttr.setY(i, vy);
+                            
+                            if (vy < 2.5) { // Colinas bajas son verdes
+                                tempColor.copy(colorGrass);
+                                tempColor.offsetHSL(0, 0, (Math.random()-0.5)*0.04); 
+                            } else {
+                                const mix = Math.min(1, (vy - 2.5) / 8.0); // Transición suave a roca
+                                tempColor.copy(colorGrass).lerp(colorRock, mix);
+                            }
+                            colors.push(tempColor.r, tempColor.g, tempColor.b);
+                        }
+                        
+                        terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                        terrainGeo.computeVertexNormals(); 
+                        
+                        // Guardamos datos para el bosque instanciado
+                        scene.userData.getTerrainHeight = getTerrainHeight;
+                        scene.userData.terrainW = baseW;
+                        scene.userData.terrainD = baseD;
+                        scene.userData.trackRadius = trackRadius;
+                        scene.userData.hasMassiveForest = false;
+
+                        const posArray = terrainGeo.attributes.position.array;
+                        for(let i=0; i<posArray.length; i+=3) { posArray[i] /= baseW; posArray[i+2] /= baseD; }
+                        terrainGeo.computeBoundingBox(); terrainGeo.computeBoundingSphere();
+
+                        const terrainMat = new THREE.MeshLambertMaterial({ 
+                            map: grassTex, 
+                            vertexColors: true, // Lee colores Pintados (Splatting)
+                            side: THREE.DoubleSide
+                        });
+                        terrainMat.userData.grassMap = grassTex; 
+                        terrainMat.userData.woodMap = woodTex;
+                        
+                        const boardMesh = new THREE.Mesh(terrainGeo, terrainMat); 
+                        boardMesh.scale.set(baseW, 1.0, baseD); 
+                        boardMesh.position.y = -0.5; 
+                        boardMesh.receiveShadow = true; 
+                        scene.add(boardMesh); 
+                        boardMeshRef.current = boardMesh; 
+                        
+                        setBoardSettings(prev => ({ ...prev, width: baseW, depth: baseD, x: 0, z: 0, material: 'grass' }));
                         const maxDim = Math.max(size.x, size.z); spherical.radius = maxDim * 1.5; spherical.phi = Math.PI / 6; 
                     } 
                     scene.add(trackGroup);
@@ -2000,12 +2342,11 @@
                         const p2 = pa[i+1];
 
                         if (!p1 || !p2) {
-                            const fallback = p1 || p2;
-                            if (fallback) {
-                                outVec.copy(fallback);
+                            if (p1 && r === 0) {
+                                outVec.copy(p1);
                                 return outVec;
                             }
-                            return null;
+                            return null; // Forzamos el fallback en getCarPos si no hay datos para interpolar
                         }
 
                         // Catmull-Rom Spline
@@ -2061,15 +2402,35 @@
                     const _targetPos = new THREE.Vector3();
                     const _lookTarget = new THREE.Vector3();
                     const _zeroVec = new THREE.Vector3(0,0,0);
+                    
+                    // FIX MEMORIA: Pre-asignamos vectores para evitar crear miles de objetos por segundo (Lag/Crashes)
+                    const _toOther = new THREE.Vector3();
+                    const _forward = new THREE.Vector3();
+                    const _right = new THREE.Vector3();
+                    const _pushDir = new THREE.Vector3();
+
+                    // OPTIMIZACIÓN CPU: Búsqueda Binaria de pistas (elimina el lag de Array.find en cada frame)
+                    const getPieceFast = (d) => {
+                        const arr = pieceMapRef.current;
+                        if (!arr || arr.length === 0) return null;
+                        let l = 0, r = arr.length - 1;
+                        while(l <= r) {
+                            let m = (l + r) >> 1;
+                            if(d >= arr[m].distStart && d < arr[m].distEnd) return arr[m];
+                            if(d < arr[m].distStart) r = m - 1;
+                            else l = m + 1;
+                        }
+                        return arr[0];
+                    };
 
                     const animate = () => { 
                         animationId = requestAnimationFrame(animate); 
                         // OPTIMIZACIÓN: Aumentamos el límite de delta-time a 0.1s para absorber lag de red sin tirones
-                        const rawDt = clock.current.getDelta(); const dt = Math.min(rawDt, 0.1);
+                        const rawDt = clock.current.getDelta(); const dt = Math.min(rawDt, 0.05); // FIX: dt reducido a 0.05 max para evitar trompicones
                         const nowTime = performance.now() / 1000;
                         const totalDist = accumulatedDist; const currentTrackLen = (hasRotonda && rallyDistancesRef.current.length > 0) ? rallyDistancesRef.current[rallyDistancesRef.current.length - 1] : totalDist;
 
-                        if (!raceStateRef.current.started) {
+                        if (!raceStateRef.current.started && !isPreRaceRef.current) {
                             if (manualThrottleRef.current > 0 || (multiplayerSession && remoteStateRef.current.throttle > 0)) {
                                 raceStateRef.current.started = true;
                                 raceStateRef.current.lapStartTime = nowTime;
@@ -2106,25 +2467,27 @@
                             const cas = carAssetsRef.current[ci + 1];
                             const setup = cas?.setup;
 
-                            let maxSpeed = 150;
-                            let accelRate = 80;
-                            let brakeRate = 120;
+                            let maxSpeed = 240;
+                            let accelRate = 150;
+                            let brakeRate = 220;
 
                             if (setup) {
                                 // Ajuste dinámico de físicas basado en parámetros reales de slot
                                 const speedFactor = (setup.motorRPM / 20000) * (2.5 / setup.gearRatio);
-                                maxSpeed = 150 * speedFactor;
+                                maxSpeed = 240 * speedFactor;
 
                                 const accelFactor = (setup.motorTorque / 300) * (80 / setup.weight) * (setup.gearRatio / 2.5);
-                                accelRate = 80 * accelFactor;
+                                accelRate = 150 * accelFactor;
 
-                                brakeRate = 120 * (setup.tireGrip / 80) * (80 / setup.weight);
+                                brakeRate = 220 * (setup.tireGrip / 80) * (80 / setup.weight);
                             }
 
                             const isLocalAI = (!multiplayerSession && aiDifficultyRef.current > 0 && ci === rivalIdx);
 
                             let targetSpeed = 0;
-                            if (countdownRef.current !== null && countdownRef.current > 0) {
+                            if (isPreRaceRef.current) {
+                                targetSpeed = 0; // Bloquea totalmente durante la pre-carrera
+                            } else if (countdownRef.current !== null && countdownRef.current > 0) {
                                 targetSpeed = 0; // Bloquea el movimiento durante la cuenta atrás
                             } else {
                                 if (ci === myCarIdx) {
@@ -2144,15 +2507,15 @@
                                         const diffFactors = [0, 0.75, 0.90, 1.05, 1.20, 1.35]; 
                                         
                                         // Aumentamos la visión de frenada porque ahora va muchísimo más rápido
-                                        const lookAheadDist = car.speed > 60 ? 35 : 18;
-                                        const currentP = pieceMapRef.current.find(p => car.distance >= p.distStart && car.distance < p.distEnd);
+                                        const lookAheadDist = car.speed > 120 ? 50 : (car.speed > 60 ? 25 : 15);
+                                        const currentP = getPieceFast(car.distance);
                                         let nextDist = (car.distance + lookAheadDist) % currentTrackLen;
-                                        const nextP = pieceMapRef.current.find(p => nextDist >= p.distStart && nextDist < p.distEnd);
+                                        const nextP = getPieceFast(nextDist);
 
                                         const gripFactor = (setup?.tireGrip || 80) / 80.0;
                                         const evalPiece = (p) => {
-                                            if (p && p.type === 'curve') return Math.sqrt(Math.abs(p.radius || 20)) * gripFactor * 13.5;
-                                            if (p && (p.type === 'rotonda' || p.subtype === 'rotonda')) return Math.sqrt(15) * gripFactor * 13.5;
+                                            if (p && p.type === 'curve') return Math.sqrt(Math.abs(p.radius || 20)) * gripFactor * 20.0;
+                                            if (p && (p.type === 'rotonda' || p.subtype === 'rotonda')) return Math.sqrt(15) * gripFactor * 20.0;
                                             return maxSpeed;
                                         };
 
@@ -2356,14 +2719,17 @@
                                             car.currentLane = change.to;
                                             laneChangedThisFrame = true; 
                                         } else if (change.isPitEntry && isPitReq) {
-                                            car.currentLane = 2; 
-                                            car.pitEnteredDist = newDist; 
-                                            laneChangedThisFrame = true;
+                                            const reqLane = change.reqLane !== undefined ? change.reqLane : (change.pitSide === 'right' ? 1 : 0);
+                                            if (car.currentLane === reqLane) {
+                                                car.currentLane = 2; 
+                                                car.pitEnteredDist = newDist; 
+                                                laneChangedThisFrame = true;
+                                            }
                                         }
                                     }
                                     
                                     if (crossedEnd && change.isPitExit && car.currentLane === 2) {
-                                        car.currentLane = change.pitSide === 'right' ? 1 : 0; 
+                                        car.currentLane = change.outLane !== undefined ? change.outLane : (change.pitSide === 'right' ? 1 : 0); 
                                     }
                                 });
                                 
@@ -2392,16 +2758,35 @@
                                             return outVec.lerpVectors(pts[i0], pts[i1], fIdx - i0);
                                         }
                                     }
+                                    
                                     let railToFollow = rails.lane1;
-                                    if (car.currentLane === 1) railToFollow = rails.lane2;
-                                    else if (car.currentLane === 2) railToFollow = rails.pit;
+                                    let baseLane = rails.lane1;
+                                    
+                                    if (car.currentLane === 1) { 
+                                        railToFollow = rails.lane2; 
+                                        baseLane = rails.lane2; 
+                                    } else if (car.currentLane === 2) { 
+                                        railToFollow = rails.pit;
+                                        // Determinamos a qué carril principal se unirá al salir del pitlane
+                                        const exitChange = rails.changes.find(c => c.isPitExit);
+                                        if (exitChange && exitChange.outLane === 1) {
+                                            baseLane = rails.lane2;
+                                        } else {
+                                            baseLane = rails.lane1;
+                                        }
+                                    }
                                     
                                     let pos = getPositionAtDistance(railToFollow, distQuery % currentTrackLen, outVec);
-                                    if (!pos) pos = getPositionAtDistance(rails.lane1, distQuery % currentTrackLen, outVec);
+                                    if (!pos) pos = getPositionAtDistance(baseLane, distQuery % currentTrackLen, outVec);
+                                    
+                                    // Fallback de seguridad extremo
+                                    if (!pos && rails.lane1[0]) pos = outVec.copy(rails.lane1[0]);
+                                    
                                     return pos;
                                 };
 
-                                const lookAhead = Math.max(6.0, car.speed * 0.08); 
+                                // FIX STUTTER: LookAhead fijo evita que el vector direccional tiemble cuando el coche acelera o frena
+                                const lookAhead = 8.0; 
                                 
                                 if (hasRotonda && rallyPathRef.current.length > 0 && rallyDistancesRef.current.length > 0) {
                                     p1 = getRallyPositionByDist(car.distance, _rallyPos);
@@ -2424,22 +2809,23 @@
                                         const otherCar = physicsState.current[otherCi];
                                         
                                         if (!otherCar.crashed && otherCar.worldPos && (otherCar.worldPos.x !== 0 || otherCar.worldPos.z !== 0)) {
-                                            const toOther = new THREE.Vector3().subVectors(otherCar.worldPos, car.worldPos);
-                                            const dist3D = toOther.length();
+                                            // FIX MEMORIA: Reutilizamos variables en lugar de instanciar 'new THREE.Vector3' en el loop
+                                            _toOther.subVectors(otherCar.worldPos, car.worldPos);
+                                            const dist3D = _toOther.length();
                                             
                                             if (dist3D < 16.0) {
-                                                const forward = _dir.clone().normalize();
-                                                const right = new THREE.Vector3(forward.z, 0, -forward.x).normalize();
-                                                const longDist = toOther.dot(forward);
-                                                const latDist = Math.abs(toOther.dot(right));
+                                                _forward.copy(_dir).normalize();
+                                                _right.set(_forward.z, 0, -_forward.x).normalize();
+                                                const longDist = _toOther.dot(_forward);
+                                                const latDist = Math.abs(_toOther.dot(_right));
                                                 
                                                 if (Math.abs(longDist) < 14.0 && latDist < 4.5) {
                                                     const speedDiff = car.speed - otherCar.speed;
                                                     
-                                                    if (longDist > 0 && speedDiff > 18.0) { 
+                                                    if (longDist > 0 && speedDiff > 25.0) { 
                                                         car.crashed = true;
                                                         car.crashTimer = 2.5;
-                                                        car.crashVelocity.copy(forward).multiplyScalar(car.speed * 0.15);
+                                                        car.crashVelocity.copy(_forward).multiplyScalar(car.speed * 0.15);
                                                         car.crashVelocity.y = Math.random() * 8 + 4; 
                                                         car.crashVelocity.x += (Math.random() - 0.5) * 8;
                                                         car.crashAngularVelocity.set((Math.random()-0.5)*15, (Math.random()-0.5)*15, (Math.random()-0.5)*15);
@@ -2447,7 +2833,7 @@
                                                         if (speedDiff > 40.0) {
                                                             otherCar.crashed = true;
                                                             otherCar.crashTimer = 2.5;
-                                                            otherCar.crashVelocity.copy(forward).multiplyScalar(car.speed * 0.1);
+                                                            otherCar.crashVelocity.copy(_forward).multiplyScalar(car.speed * 0.1);
                                                             otherCar.crashVelocity.y = Math.random() * 5 + 2;
                                                             otherCar.crashAngularVelocity.set((Math.random()-0.5)*10, (Math.random()-0.5)*10, (Math.random()-0.5)*10);
                                                         }
@@ -2464,8 +2850,8 @@
                                                         if (car.speed > 55) { 
                                                             car.crashed = true;
                                                             car.crashTimer = 2.5;
-                                                            const pushDir = toOther.clone().normalize().negate();
-                                                            car.crashVelocity.copy(forward).multiplyScalar(car.speed * 0.1).addScaledVector(pushDir, car.speed * 0.05);
+                                                            _pushDir.copy(_toOther).normalize().negate();
+                                                            car.crashVelocity.copy(_forward).multiplyScalar(car.speed * 0.1).addScaledVector(_pushDir, car.speed * 0.05);
                                                             car.crashVelocity.y = Math.random() * 5 + 2;
                                                             car.crashAngularVelocity.set((Math.random()-0.5)*10, (Math.random()-0.5)*10, (Math.random()-0.5)*10);
                                                             const now = Date.now();
@@ -2481,21 +2867,21 @@
 
                                     // --- EVENTO DE SALIDA DE PISTA (POR VELOCIDAD EN CURVAS) ---
                                     if (!car.crashed && !isDecor) {
-                                        const currentPiece = pieceMapRef.current.find(p => car.distance >= p.distStart && car.distance < p.distEnd);
+                                        const currentPiece = getPieceFast(car.distance);
                                         if (currentPiece && currentPiece.type === 'curve') {
                                             const r = Math.abs(currentPiece.radius || 20);
                                             const gripFactor = (setup?.tireGrip || 80) / 80.0;
                                             
                                             // Límite de velocidad en curva calculado por radio y agarre
-                                            const maxV = Math.sqrt(r) * gripFactor * 13.5; 
+                                            const maxV = Math.sqrt(r) * gripFactor * 20.0; 
                                             
-                                            if (car.speed > maxV + 10) { 
+                                            if (car.speed > maxV + 15) { 
                                                 car.crashed = true;
                                                 car.crashTimer = 2.0;
                                                 
-                                                // Sale despedido por la tangente de la curva
-                                                const forward = _dir.clone().normalize();
-                                                car.crashVelocity.copy(forward).multiplyScalar(car.speed * 0.15);
+                                                // FIX MEMORIA: Reutilizar vector en las salidas de pista
+                                                _forward.copy(_dir).normalize();
+                                                car.crashVelocity.copy(_forward).multiplyScalar(car.speed * 0.15);
                                                 car.crashVelocity.y = 1.0 + Math.random() * 2; // Ligero salto
                                                 car.crashAngularVelocity.set((Math.random()-0.5)*5, (Math.random()-0.5)*5, (Math.random()-0.5)*5);
                                                 
@@ -2523,8 +2909,9 @@
                                         _targetMatrix.lookAt(_origin, _flook, _up);
                                         _targetRotation.setFromRotationMatrix(_targetMatrix);
                                         
-                                        if (car.speed < 5.0) pg.quaternion.slerp(_targetRotation, 1 - Math.exp(-10 * dt));
-                                        else pg.quaternion.slerp(_targetRotation, 1 - Math.exp(-25 * dt));
+                                        // FIX STUTTER: Suavizados más rápidos evitan que el modelo "flote" detrás de la física
+                                        if (car.speed < 5.0) pg.quaternion.slerp(_targetRotation, 1 - Math.exp(-15 * dt));
+                                        else pg.quaternion.slerp(_targetRotation, 1 - Math.exp(-35 * dt));
                                     }
                                 }
                             } // Fin de Lógica Normal
@@ -2535,38 +2922,39 @@
                                 _worldP1.copy(p1).add(trackGroup.position);
                                 _worldP2.copy(p2).add(trackGroup.position);
 
+                                // FIX STUTTER: Cámaras endurecidas. PILOT/REAR son ahora rígidas, las demás tienen Lerps agresivos.
                                 if (cameraModeRef.current === 'PILOT') {
                                     _dirW.subVectors(_worldP2, _worldP1).normalize();
                                     _targetPos.copy(_worldP1).addScaledVector(_dirW, 1.5);
                                     _targetPos.y += 2.8;
                                     _lookTarget.copy(_targetPos).addScaledVector(_dirW, 50);
-                                    camera.position.lerp(_targetPos, 1 - Math.exp(-15 * dt)); 
+                                    camera.position.copy(_targetPos); 
                                     camera.lookAt(_lookTarget);
                                 } else if (cameraModeRef.current === 'CHASE') {
                                     _dirW.subVectors(_worldP2, _worldP1).normalize();
-                                    _targetPos.copy(_worldP1).addScaledVector(_dirW, -50);
-                                    _targetPos.y += 30;
-                                    camera.position.lerp(_targetPos, 1 - Math.exp(-5 * dt)); 
-                                    cameraTarget.lerp(_worldP1, 1 - Math.exp(-10 * dt)); 
+                                    _targetPos.copy(_worldP1).addScaledVector(_dirW, -35);
+                                    _targetPos.y += 20;
+                                    camera.position.lerp(_targetPos, 1 - Math.exp(-15 * dt)); 
+                                    cameraTarget.lerp(_worldP1, 1 - Math.exp(-20 * dt)); 
                                     camera.lookAt(cameraTarget); 
                                 } else if (cameraModeRef.current === 'FRONT') {
                                     _dirW.subVectors(_worldP2, _worldP1).normalize();
-                                    _targetPos.copy(_worldP1).addScaledVector(_dirW, 45);
-                                    _targetPos.y += 15;
-                                    camera.position.lerp(_targetPos, 1 - Math.exp(-5 * dt)); 
-                                    cameraTarget.lerp(_worldP1, 1 - Math.exp(-10 * dt)); 
+                                    _targetPos.copy(_worldP1).addScaledVector(_dirW, 35);
+                                    _targetPos.y += 12;
+                                    camera.position.lerp(_targetPos, 1 - Math.exp(-15 * dt)); 
+                                    cameraTarget.lerp(_worldP1, 1 - Math.exp(-20 * dt)); 
                                     camera.lookAt(cameraTarget); 
                                 } else if (cameraModeRef.current === 'REAR') {
                                     _dirW.subVectors(_worldP2, _worldP1).normalize();
-                                    _targetPos.copy(_worldP1).addScaledVector(_dirW, -3);
-                                    _targetPos.y += 2.5;
+                                    _targetPos.copy(_worldP1).addScaledVector(_dirW, -4);
+                                    _targetPos.y += 3.0;
                                     _lookTarget.copy(_targetPos).addScaledVector(_dirW, -50);
-                                    camera.position.lerp(_targetPos, 1 - Math.exp(-15 * dt)); 
+                                    camera.position.copy(_targetPos); 
                                     camera.lookAt(_lookTarget);
                                 } else if (cameraModeRef.current === 'BIRD') {
                                     _targetPos.set(_worldP1.x, 180, _worldP1.z + 1);
-                                    camera.position.lerp(_targetPos, 1 - Math.exp(-5 * dt)); 
-                                    cameraTarget.lerp(_worldP1, 1 - Math.exp(-10 * dt)); 
+                                    camera.position.lerp(_targetPos, 1 - Math.exp(-10 * dt)); 
+                                    cameraTarget.lerp(_worldP1, 1 - Math.exp(-15 * dt)); 
                                     camera.lookAt(cameraTarget); 
                                 } else {
                                     cameraTarget.lerp(_zeroVec, 1 - Math.exp(-10 * dt)); 
@@ -2595,7 +2983,8 @@
                         }
 
                         if (peerConn && peerConn.open) {
-                            if (nowTime - lastNetTime > 0.05) { 
+                            // FIX: Reducido a 10Hz (0.1s) para no saturar WebRTC y causar lag
+                            if (nowTime - lastNetTime > 0.1) { 
                                 peerConn.send({ throttle: manualThrottleRef.current, distance: physicsState.current[myCarIdx].distance, speed: physicsState.current[myCarIdx].speed, laneChange: laneChangeRef.current, pitEntry: pitEntryRef.current, fuel: physicsState.current[myCarIdx].fuel, isRefueling: physicsState.current[myCarIdx].isRefueling });
                                 lastNetTime = nowTime;
                             }
@@ -2640,7 +3029,7 @@
                         
                         // Ajuste visual de la barra de RPM para que tenga sentido con la maxSpeed del setup
                         const currentSetup = carAssetsRef.current[1]?.setup;
-                        const maxDisplaySpeed = currentSetup ? (150 * (currentSetup.motorRPM / 20000) * (2.5 / currentSetup.gearRatio)) : 150;
+                        const maxDisplaySpeed = currentSetup ? (240 * (currentSetup.motorRPM / 20000) * (2.5 / currentSetup.gearRatio)) : 240;
                         if (telemetryRefs.rpmBar.current) telemetryRefs.rpmBar.current.style.width = `${Math.min(100, (myCarForHUD.speed / maxDisplaySpeed) * 100)}%`;
                         
                         // Actualización visual HUD Gasolina (Adaptado al nuevo diseño Sim-Racing o Analógico)
@@ -2728,7 +3117,22 @@
                         if(renderer){ 
                             renderer.domElement.removeEventListener('mousedown', onMouseDown); 
                             if(animationId) cancelAnimationFrame(animationId); 
+                            
+                            // FIX: Limpieza profunda de memoria (evita que el PC/Móvil explote al entrar y salir del 3D)
+                            if (sceneRef.current) {
+                                sceneRef.current.traverse((child) => {
+                                    if (child.isMesh) {
+                                        if (child.geometry) child.geometry.dispose();
+                                        if (child.material) {
+                                            if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                                            else child.material.dispose();
+                                        }
+                                    }
+                                });
+                            }
+                            
                             renderer.dispose(); 
+                            if (renderer.forceContextLoss) renderer.forceContextLoss(); // Liberar VRAM estricta
                         } 
                     };
                 };
@@ -2788,6 +3192,7 @@
 
             // --- NUEVO EFFECT: CARGA DE MODELOS 3D CUANDO CAMBIA customCarAssets ---
             useEffect(() => {
+                let isActive = true; // FIX: Prevención de colapsos por descargas simultáneas en carrera
                 if(!sceneReady || !customCarAssets) return;
                 Object.entries(customCarAssets).forEach(([id, asset]) => {
                     const targetId = parseInt(id);
@@ -2812,15 +3217,22 @@
                     
                     if (!needsLoad && !needsScatter) return;
                     
+                    // FIX: Prevenir colapso si se cambia de modelo muy rápido dentro del juego
+                    if (needsLoad && container.userData.isLoading) return;
+                    if (needsLoad) container.userData.isLoading = true;
+                    
                     container.userData.currentGLB = asset.glb; container.userData.scatterCount = count;
                     const loader = getGLTFLoader(rendererRef.current); // Usamos el loader global en la simulación 3D
                     
                     if (needsLoad) {
                          loader.load(asset.glb, (gltf) => {
+                            if (!isActive) return; // FIX: Abortar si ya hemos seleccionado otro coche
+                            container.userData.isLoading = false;
+                            if (container.userData.currentGLB !== asset.glb) return; // Race condition protection
                             const model = gltf.scene;
                             model.traverse(child => { 
                                 if (child.isMesh) { 
-                                    child.castShadow = true; 
+                                    child.castShadow = false; // OPTIMIZACIÓN: NINGÚN coche ni árbol genera sombras pesadas
                                     child.receiveShadow = false; 
                                     
                                     // ALTERNATIVA ROBUSTA: RECONSTRUCCIÓN LIMPIA DE GEOMETRÍA
@@ -2848,67 +3260,324 @@
                                     } 
                                 } 
                             });
+
+                            // --- NUEVO: BOSQUE MASIVO USANDO TUS PROPIOS MODELOS GLB ---
+                            if (isDecor && sceneRef.current && sceneRef.current.userData.getTerrainHeight && !sceneRef.current.userData.hasMassiveForest) {
+                                sceneRef.current.userData.hasMassiveForest = true;
+                                
+                                const baseW = sceneRef.current.userData.terrainW;
+                                const baseD = sceneRef.current.userData.terrainD;
+                                const trackRadius = sceneRef.current.userData.trackRadius;
+                                const area = baseW * baseD;
+                                
+                                // CANTIDADES DINÁMICAS: Dependen de los m2 del tablero maqueta
+                                const treeCount = Math.min(80, Math.max(5, Math.floor(area / 2500))); // OPTIMIZADO: Menos árboles
+                                const bushCount = Math.min(150, Math.max(10, Math.floor(area / 800))); // OPTIMIZADO: Menos arbustos
+                                
+                                const treeMeshes = [];
+                                const bushMeshes = [];
+                                
+                                const tempBox = new THREE.Box3().setFromObject(model);
+                                const tSize = tempBox.getSize(new THREE.Vector3());
+                                const maxD = Math.max(tSize.x, tSize.y, tSize.z);
+                                
+                                // Escala ajustada a tamaño maqueta (árboles realistas para slot, no gigantes)
+                                const baseTreeScale = maxD > 0 ? 25.0 / maxD : 1; 
+                                const baseBushScale = maxD > 0 ? 8.0 / maxD : 0.25;
+
+                                // Replicamos exactamente las mallas y materiales del GLB original
+                                model.traverse((c) => {
+                                    if (c.isMesh) {
+                                        const iTree = new THREE.InstancedMesh(c.geometry, c.material, treeCount);
+                                        // APAGAMOS SOMBRAS (Principal asesino de FPS)
+                                        iTree.receiveShadow = false;
+                                        iTree.castShadow = false; 
+                                        sceneRef.current.add(iTree);
+                                        treeMeshes.push(iTree);
+                                        
+                                        const iBush = new THREE.InstancedMesh(c.geometry, c.material, bushCount);
+                                        iBush.receiveShadow = false;
+                                        iBush.castShadow = false; 
+                                        sceneRef.current.add(iBush);
+                                        bushMeshes.push(iBush);
+                                    }
+                                });
+
+                                const dummy = new THREE.Object3D();
+                                const getH = sceneRef.current.userData.getTerrainHeight;
+
+                                // 1. Plantar Árboles Grandes (OPTIMIZADO)
+                                let validTreeCount = 0;
+                                for (let i = 0; i < treeCount * 4 && validTreeCount < treeCount; i++) {
+                                    const rx = (Math.random() - 0.5) * baseW;
+                                    const rz = (Math.random() - 0.5) * baseD;
+                                    const dist = Math.sqrt(rx*rx + rz*rz);
+
+                                    if (dist < trackRadius + 12) continue; // Mantener lejos de la pista
+
+                                    const ry = getH(rx, rz, dist) - 0.5; // Ajustar nivel de raíz
+                                    if (ry > 0.5) { 
+                                        const scaleVar = baseTreeScale * (0.8 + Math.random() * 0.6); // Variación de escala real
+                                        dummy.position.set(rx, ry, rz);
+                                        dummy.rotation.y = Math.random() * Math.PI * 2;
+                                        // Inclinación orgánica
+                                        dummy.rotation.x = (Math.random() - 0.5) * 0.1;
+                                        dummy.rotation.z = (Math.random() - 0.5) * 0.1;
+                                        dummy.scale.set(scaleVar, scaleVar, scaleVar);
+                                        dummy.updateMatrix();
+
+                                        treeMeshes.forEach(im => im.setMatrixAt(validTreeCount, dummy.matrix));
+                                        validTreeCount++;
+                                    }
+                                }
+                                treeMeshes.forEach(im => {
+                                    im.count = validTreeCount;
+                                    im.instanceMatrix.needsUpdate = true;
+                                });
+                                
+                                // 2. Plantar Arbustos Pequeños (OPTIMIZADO)
+                                let validBushCount = 0;
+                                for (let i = 0; i < bushCount * 4 && validBushCount < bushCount; i++) {
+                                    const rx = (Math.random() - 0.5) * baseW;
+                                    const rz = (Math.random() - 0.5) * baseD;
+                                    const dist = Math.sqrt(rx*rx + rz*rz);
+
+                                    if (dist < trackRadius + 3) continue; // Los arbustos pueden pegarse mucho más a la pista
+
+                                    const ry = getH(rx, rz, dist);
+                                    if (ry > 0.1) { 
+                                        const scaleVar = baseBushScale * (0.6 + Math.random() * 0.8); 
+                                        // Hundir la malla en el suelo y achatarla para crear el aspecto de un arbusto redondo
+                                        dummy.position.set(rx, ry - (scaleVar * maxD * 0.2), rz);
+                                        dummy.rotation.set((Math.random() - 0.5) * 0.4, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.4);
+                                        dummy.scale.set(scaleVar, scaleVar * 0.7, scaleVar); 
+                                        dummy.updateMatrix();
+
+                                        bushMeshes.forEach(im => im.setMatrixAt(validBushCount, dummy.matrix));
+                                        validBushCount++;
+                                    }
+                                }
+                                bushMeshes.forEach(im => {
+                                    im.count = validBushCount;
+                                    im.instanceMatrix.needsUpdate = true;
+                                });
+                            }
+
                             container.userData.originalModel = model.clone(); applyScatter(container, model, count, isDecor);
-                        }, undefined, (err) => console.warn("Error loading GLB in main scene", err));
+                        }, undefined, (err) => {
+                            container.userData.isLoading = false;
+                            console.warn("Error loading GLB in main scene", err);
+                        });
                     } else if (needsScatter && container.userData.originalModel) { applyScatter(container, container.userData.originalModel.clone(), count, isDecor); }
                 });
+                
+                return () => { isActive = false; };
             }, [customCarAssets, sceneReady]); 
 
-            const applyScatter = (container, model, count, isDecor) => {
+            // ACTUALIZACIÓN DE LUCES Y ENTORNO NOCTURNO
+            useEffect(() => {
+                if (!sceneRef.current) return;
+                const scene = sceneRef.current;
+                const isNight = isNightMode;
+
+                if (scene.userData.ambientLight) {
+                    scene.userData.ambientLight.intensity = isNight ? 0.05 : 0.4;
+                    scene.userData.ambientLight.color.setHex(isNight ? 0x223355 : 0xffedd5); 
+                }
+
+                if (dirLightRef.current) {
+                    dirLightRef.current.intensity = isNight ? 0.1 : 1.2;
+                    dirLightRef.current.color.setHex(isNight ? 0x64748b : 0xfffae8); 
+                }
+
+                if (scene.userData.updateSky) {
+                    scene.userData.updateSky(isNight);
+                }
+
+                carMeshesRef.current.forEach(pg => {
+                    const vg = pg.children[0];
+                    if (vg) {
+                        vg.traverse(child => {
+                            if (child.name === "HEADLIGHT") child.intensity = isNight ? 3.0 : 0;
+                            if (child.name === "TAILLIGHT") child.intensity = isNight ? 1.5 : 0;
+                            if (child.material && child.material.name === "GLOW_HEAD") child.material.opacity = isNight ? 0.9 : 0;
+                            if (child.material && child.material.name === "GLOW_TAIL") child.material.opacity = isNight ? 0.9 : 0;
+                        });
+                    }
+                });
+            }, [isNightMode]);
+
+            const applyScatter = (container, rawModel, count, isDecor) => {
                 while(container.children.length > 0){ container.remove(container.children[0]); }
                 
                 // Reset de base
-                model.position.set(0,0,0);
-                model.rotation.set(0,0,0);
-                model.scale.set(1,1,1);
-                model.updateMatrixWorld(true);
+                rawModel.position.set(0,0,0);
+                rawModel.rotation.set(0,0,0);
+                rawModel.scale.set(1,1,1);
+                rawModel.updateMatrixWorld(true);
 
-                const box = new THREE.Box3().setFromObject(model); 
+                const box = new THREE.Box3().setFromObject(rawModel); 
                 const size = box.getSize(new THREE.Vector3()); 
                 
                 let scale = 1;
                 if (!isDecor) {
-                    // 1. ESCALA 1:32 EXACTA (14.0 cm en la pista)
                     const maxDim = Math.max(size.x, size.z);
                     scale = maxDim > 0 ? 14.0 / maxDim : 1; 
-                    
-                    // 2. TODOS EN EL MISMO SENTIDO INTELIGENTE (Auto-Alineación Geométrica)
-                    model.rotation.y = getAutoCarRotation(model);
+                    rawModel.rotation.y = getAutoCarRotation(rawModel);
                 } else { 
                     const maxDim = Math.max(size.z, size.x, size.y);
                     scale = maxDim > 0 ? 45.0 / maxDim : 1;
-                    if (size.z > size.y * 1.5) model.rotation.x = -Math.PI / 2; else model.rotation.y = Math.PI; 
+                    if (size.z > size.y * 1.5) rawModel.rotation.x = -Math.PI / 2; else rawModel.rotation.y = Math.PI; 
                 }
                 
-                model.scale.setScalar(scale); 
-                model.updateMatrixWorld(true);
+                rawModel.scale.setScalar(scale); 
+                rawModel.updateMatrixWorld(true);
 
-                // 3. CENTRAR EJES Y RUEDAS TOCANDO PISTA (Y=0)
-                const finalBox = new THREE.Box3().setFromObject(model);
+                const finalBox = new THREE.Box3().setFromObject(rawModel);
                 const finalCenter = finalBox.getCenter(new THREE.Vector3());
                 const finalSize = finalBox.getSize(new THREE.Vector3());
                 
-                model.position.x -= finalCenter.x;
-                model.position.z -= finalCenter.z;
-                model.position.y -= finalBox.min.y; // Garantiza apoyo exacto sobre el asfalto
+                rawModel.position.x -= finalCenter.x;
+                rawModel.position.z -= finalCenter.z;
 
                 if (!isDecor) {
-                    model.position.z -= finalSize.z * 0.25;
+                    const smartBottomY = getSmartBottomY(rawModel);
+                    rawModel.position.y -= smartBottomY; // Las ruedas tocan la moqueta exactamente
+                    rawModel.position.z -= finalSize.z * 0.25;
+                } else {
+                    rawModel.position.y -= finalBox.min.y; 
                 }
 
-                model.userData.baseScale = new THREE.Vector3(scale, scale, scale);
-                model.userData.carSize = finalSize;
+                // WRAPPER PARA INDEPENDIZAR LA SOMBRA DE LAS ROTACIONES DEL MODELO
+                const templateGroup = new THREE.Group();
+                const fakeTex = getFakeShadowTexture();
+
+                if (isDecor) {
+                    // --- SOMBRA FALSA OPTIMIZADA: PLANO CON TEXTURA (Cero cálculos de geometría) ---
+                    const shadowW = finalSize.x * 2.0;
+                    const shadowL = finalSize.z * 2.0;
+                    const shadowGeo = new THREE.PlaneGeometry(shadowW, shadowL);
+                    shadowGeo.rotateX(-Math.PI / 2);
+                    
+                    const shadowMat = new THREE.MeshBasicMaterial({ 
+                        map: fakeTex, 
+                        transparent: true, 
+                        opacity: 0.8, 
+                        depthWrite: false, 
+                        color: 0x000000,
+                        clippingPlanes: shadowClippingPlanesRef.current
+                    });
+                    
+                    const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+                    shadowMesh.position.set(0, 0.55, 0);  // Sobre el suelo
+                    shadowMesh.name = "FAKE_SHADOW";
+                    templateGroup.add(shadowMesh);
+
+                    rawModel.name = "REAL_MODEL";
+                    rawModel.position.y += 0.5;
+                    // Apagar sombras reales
+                    rawModel.traverse(child => { if (child.isMesh) { child.castShadow = false; child.receiveShadow = false; } });
+                    templateGroup.add(rawModel);
+
+                } else {
+                    // --- SOMBRA FALSA PARA COCHES ---
+                    templateGroup.add(rawModel);
+
+                    const shadowW = finalSize.x * 1.4;
+                    const shadowL = finalSize.z * 1.3;
+                    const shadowGeo = new THREE.PlaneGeometry(shadowW, shadowL);
+                    shadowGeo.rotateX(-Math.PI / 2);
+                    const shadowMat = new THREE.MeshBasicMaterial({ map: fakeTex, transparent: true, opacity: 0.9, depthWrite: false, color: 0x000000 });
+                    const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+                    
+                    shadowMesh.position.set(0, 0.1, -finalSize.z * 0.25);
+                    templateGroup.add(shadowMesh);
+
+                    // --- LUCES PARA LOS COCHES (FAROS Y FRENOS) ---
+                    const lightsGroup = new THREE.Group();
+                    lightsGroup.name = "CarLightsGroup";
+
+                    const isNight = isNightModeRef.current;
+                    const hlIntensity = isNight ? 3.0 : 0;
+                    const tlIntensity = isNight ? 1.5 : 0;
+
+                    // Focos Delanteros (SpotLight para iluminar la pista)
+                    const hl1 = new THREE.SpotLight(0xffffee, hlIntensity, 80, Math.PI/5, 0.6, 1.5);
+                    hl1.position.set(finalSize.x * 0.35, finalSize.y * 0.4, -finalSize.z * 0.4);
+                    hl1.name = "HEADLIGHT";
+                    const t1 = new THREE.Object3D(); t1.position.set(finalSize.x * 0.35, 0, -finalSize.z * 4.0);
+                    hl1.target = t1;
+                    lightsGroup.add(hl1); lightsGroup.add(t1);
+
+                    const hl2 = new THREE.SpotLight(0xffffee, hlIntensity, 80, Math.PI/5, 0.6, 1.5);
+                    hl2.position.set(-finalSize.x * 0.35, finalSize.y * 0.4, -finalSize.z * 0.4);
+                    hl2.name = "HEADLIGHT";
+                    const t2 = new THREE.Object3D(); t2.position.set(-finalSize.x * 0.35, 0, -finalSize.z * 4.0);
+                    hl2.target = t2;
+                    lightsGroup.add(hl2); lightsGroup.add(t2);
+
+                    // Luz Trasera (PointLight roja)
+                    const tl = new THREE.PointLight(0xff0000, tlIntensity, 8);
+                    tl.position.set(0, finalSize.y * 0.5, finalSize.z * 0.4);
+                    tl.name = "TAILLIGHT";
+                    lightsGroup.add(tl);
+
+                    // Pilotos brillantes visuales (esferitas emisivas)
+                    const glowGeo = new THREE.SphereGeometry(0.08, 8, 8);
+                    const headGlowMat = new THREE.MeshBasicMaterial({ color: 0xffffee, transparent: true, opacity: isNight ? 0.9 : 0 });
+                    headGlowMat.name = "GLOW_HEAD";
+                    const tailGlowMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: isNight ? 0.9 : 0 });
+                    tailGlowMat.name = "GLOW_TAIL";
+                    
+                    const hg1 = new THREE.Mesh(glowGeo, headGlowMat); hg1.position.copy(hl1.position); lightsGroup.add(hg1);
+                    const hg2 = new THREE.Mesh(glowGeo, headGlowMat); hg2.position.copy(hl2.position); lightsGroup.add(hg2);
+                    
+                    const tg1 = new THREE.Mesh(glowGeo, tailGlowMat); tg1.position.set(finalSize.x * 0.35, tl.position.y, tl.position.z); lightsGroup.add(tg1);
+                    const tg2 = new THREE.Mesh(glowGeo, tailGlowMat); tg2.position.set(-finalSize.x * 0.35, tl.position.y, tl.position.z); lightsGroup.add(tg2);
+
+                    templateGroup.add(lightsGroup);
+
+                    rawModel.traverse(child => { if (child.isMesh) { child.castShadow = false; child.receiveShadow = false; } });
+                }
+
+                templateGroup.userData.baseScale = new THREE.Vector3(1, 1, 1);
+                templateGroup.userData.carSize = finalSize;
                 
-                if (count <= 1) { container.add(model); } else {
+                if (count <= 1) { 
+                    container.add(templateGroup); 
+                } else {
                     const bRef = boardSettingsRef.current; const centers = pathPointsRef.current || []; const minSafeDistSq = 24.0 * 24.0; 
                     for(let i=0; i<count; i++) {
-                        const clone = model.clone(); let validPos = false; let attempts = 0; let rX = 0, rZ = 0;
+                        const clone = templateGroup.clone(); let validPos = false; let attempts = 0; let rX = 0, rZ = 0;
                         while(!validPos && attempts < 150) { 
                             rX = bRef.x + (Math.random() - 0.5) * bRef.width; rZ = bRef.z + (Math.random() - 0.5) * bRef.depth; validPos = true;
                             for (let j = 0; j < centers.length; j += 5) { const c = centers[j]; if (!c) continue; const dx = rX - c.x; const dz = rZ - c.z; if (dx * dx + dz * dz < minSafeDistSq) { validPos = false; break; } }
                             attempts++;
                         }
-                        if(validPos) { clone.position.x = rX; clone.position.z = rZ; clone.rotation.y = Math.random() * Math.PI * 2; clone.userData.baseScale = new THREE.Vector3(scale, scale, scale); container.add(clone); }
+                        if(validPos) { 
+                            clone.position.x = rX; 
+                            clone.position.z = rZ; 
+                            
+                            const randRot = Math.random() * Math.PI * 2;
+                            
+                            if (isDecor) {
+                                // Gira el árbol real para dar variación visual al bosque
+                                const treeMesh = clone.children.find(c => c.name === "REAL_MODEL");
+                                if (treeMesh) treeMesh.rotation.y = randRot;
+                                
+                                // Gira el interior de la sombra para que coincida exactamente con la postura del árbol
+                                // (Pero el contenedor de sombra FAKE_SHADOW no gira, para que TODAS apunten hacia el mismo sol)
+                                const shadowGrp = clone.children.find(c => c.name === "FAKE_SHADOW");
+                                if (shadowGrp && shadowGrp.children[0]) {
+                                    shadowGrp.children[0].rotation.y = randRot; 
+                                }
+                            } else {
+                                clone.rotation.y = randRot; 
+                            }
+                            
+                            clone.userData.baseScale = new THREE.Vector3(1, 1, 1); 
+                            container.add(clone); 
+                        }
                     }
                 }
             };
@@ -2988,16 +3657,16 @@
                                 <div className="flex-1 flex flex-col gap-2">
                                     <div className="flex justify-between items-end bg-black/40 p-2 rounded-lg border border-gray-800 shadow-inner">
                                         <span className="text-[9px] text-gray-400 font-bold tracking-widest uppercase">{t.totalTime}</span>
-                                        <span ref={telemetryRefs.totalTime} className="text-3xl font-digital text-white leading-none font-black drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">0.00</span>
+                                        <span ref={telemetryRefs.totalTime} className="text-3xl font-digital tabular-nums tracking-tighter text-white leading-none font-bold drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">0.00</span>
                                     </div>
                                     <div className="flex gap-2">
                                         <div className="flex-1 flex flex-col justify-center items-center bg-black/40 p-1.5 rounded-lg border border-gray-800 shadow-inner">
                                             <span className="text-[8px] text-[#39ff14] font-bold tracking-widest uppercase mb-0.5">{t.currentLap}</span>
-                                            <span ref={telemetryRefs.currentLap} className="text-xl font-mono text-[#39ff14] font-bold">0.00</span>
+                                            <span ref={telemetryRefs.currentLap} className="text-xl font-digital tabular-nums tracking-tight text-[#39ff14] font-bold">0.00</span>
                                         </div>
                                         <div className="flex-1 flex flex-col justify-center items-center bg-yellow-500/10 p-1.5 rounded-lg border border-yellow-500/30 shadow-[inset_0_0_10px_rgba(234,179,8,0.1)]">
                                             <span className="text-[8px] text-yellow-500 font-bold tracking-widest uppercase mb-0.5">{t.bestLap}</span>
-                                            <span ref={telemetryRefs.bestTime} className="text-xl font-mono text-yellow-400 font-bold drop-shadow-[0_0_8px_#eab308]">--.--</span>
+                                            <span ref={telemetryRefs.bestTime} className="text-xl font-digital tabular-nums tracking-tight text-yellow-400 font-bold drop-shadow-[0_0_8px_#eab308]">--.--</span>
                                         </div>
                                     </div>
                                 </div>
@@ -3103,6 +3772,9 @@
                     {/* TOP RIGHT: SETTINGS & CAMERAS */}
                     <div className="absolute top-6 right-6 z-[85] flex flex-col items-end gap-3 pointer-events-auto">
                         <div className="flex bg-black/90 p-1.5 rounded-xl border border-gray-800 shadow-[0_10px_20px_rgba(0,0,0,0.8)] gap-1 transform -skew-x-6">
+                            <button onClick={() => setIsNightMode(!isNightMode)} title={isNightMode ? 'DÍA' : 'NOCHE'} className={`px-4 py-2 font-black text-[10px] tracking-widest uppercase transition-all rounded flex items-center gap-2 transform skew-x-6 ${isNightMode ? 'text-indigo-400 bg-gray-800' : 'text-yellow-400 hover:text-white hover:bg-gray-800'}`}>
+                                {isNightMode ? <Moon size={14}/> : <Sun size={14}/>} {isNightMode ? 'NOCHE' : 'DÍA'}
+                            </button>
                             <button onClick={toggleQuality} title={t.qualityTooltip} className={`px-4 py-2 font-black text-[10px] tracking-widest uppercase transition-all rounded flex items-center gap-2 transform skew-x-6 ${['LOW', 'MIN'].includes(qualityMode) ? 'text-orange-400 bg-gray-800' : (qualityMode === 'ULTRA' ? 'text-purple-400 bg-gray-800' : 'text-gray-500 hover:text-white hover:bg-gray-800')}`}>
                                 <Zap size={14}/> {qualityMode}
                             </button>
@@ -3150,9 +3822,6 @@
                             <button onClick={() => setCameraMode('REAR')} title={t.camRear} className={`px-3 py-2 font-black text-[10px] tracking-widest uppercase transition-all rounded flex items-center gap-2 transform skew-x-6 ${cameraMode === 'REAR' ? 'bg-[#00f0ff] text-black shadow-[0_0_10px_#00f0ff]' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
                                 <Undo2 size={12}/> REAR
                             </button>
-                            <button onClick={() => setCameraMode('ORBIT')} title={t.camOrbit} className={`px-3 py-2 font-black text-[10px] tracking-widest uppercase transition-all rounded flex items-center gap-2 transform skew-x-6 ${cameraMode === 'ORBIT' ? 'bg-[#00f0ff] text-black shadow-[0_0_10px_#00f0ff]' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                                <Move3d size={12}/> ORBIT
-                            </button>
                         </div>
                     </div>
 
@@ -3177,8 +3846,9 @@
                                         <span ref={telemetryRefs.fuelStatus} className="text-gray-400">FUEL</span>
                                         <span ref={telemetryRefs.fuelText} className="text-[#39ff14]">100%</span>
                                     </div>
-                                    <div className="w-full h-2 bg-gray-900 rounded-full overflow-hidden border border-gray-700">
-                                        <div ref={telemetryRefs.fuelBar} className="h-full bg-[#39ff14] transition-all duration-75 shadow-[0_0_10px_#39ff14]"></div>
+                                    <div className="w-full h-3 bg-gray-950 rounded-[2px] overflow-hidden border border-gray-800 relative shadow-[inset_0_2px_5px_rgba(0,0,0,0.8)]">
+                                        <div ref={telemetryRefs.fuelBar} className="absolute left-0 top-0 bottom-0 bg-[#39ff14] transition-all duration-75 shadow-[0_0_10px_#39ff14] z-10"></div>
+                                        <div className="absolute inset-0 z-20 pointer-events-none" style={{backgroundImage: 'repeating-linear-gradient(to right, transparent, transparent 5px, #0a0a0a 5px, #0a0a0a 7px)'}}></div>
                                     </div>
                                 </div>
                             </div>
@@ -3187,8 +3857,9 @@
                                 <div className="flex justify-between text-[9px] font-black text-gray-500 mb-1.5 uppercase tracking-wider">
                                     <span>RPM</span><span className="text-red-500">MAX</span>
                                 </div>
-                                <div className="w-full h-3 bg-gray-900 rounded-full overflow-hidden shadow-[inset_0_2px_5px_rgba(0,0,0,0.8)] border border-gray-800 flex items-center px-0.5">
-                                    <div ref={telemetryRefs.rpmBar} className="h-2 rounded-full bg-gradient-to-r from-blue-500 via-yellow-400 to-red-500 w-0 transition-all duration-75"></div>
+                                <div className="w-full h-3 bg-gray-950 rounded-[2px] overflow-hidden shadow-[inset_0_2px_5px_rgba(0,0,0,0.8)] border border-gray-800 relative flex items-center">
+                                    <div ref={telemetryRefs.rpmBar} className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-blue-500 via-yellow-400 to-red-500 w-0 transition-all duration-75 z-10"></div>
+                                    <div className="absolute inset-0 z-20 pointer-events-none" style={{backgroundImage: 'repeating-linear-gradient(to right, transparent, transparent 8px, #0a0a0a 8px, #0a0a0a 10px)'}}></div>
                                 </div>
                             </div>
                         </div>
@@ -3233,7 +3904,7 @@
                             }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"/>
                             
                             <div className="relative z-30 flex justify-between items-center w-full px-6 pointer-events-none">
-                                <span ref={throttleLabelRef} className="text-[14px] font-black uppercase tracking-[0.2em] drop-shadow-[0_2px_4px_rgba(0,0,0,1)] text-gray-600">THROTTLE</span>
+                                <span ref={throttleLabelRef} className="text-[14px] font-black uppercase tracking-[0.2em] drop-shadow-[0_2px_4px_rgba(0,0,0,1)] text-gray-600">{t.controller}</span>
                                 <span ref={throttleTextRef} className="font-digital font-black text-5xl italic drop-shadow-[0_2px_4px_rgba(0,0,0,1)] text-gray-700">0</span>
                             </div>
                         </div>
@@ -3488,6 +4159,92 @@
                         </div>
                     )}
 
+                    {/* MODAL CONFIGURACIÓN DE CARRERA (PRE-RACE) */}
+                    {isPreRace && sceneReady && (
+                        <div className="absolute inset-0 z-[200] bg-black/60 backdrop-blur-md flex items-center justify-center animate-in">
+                            <div className="bg-[#0f172a]/95 border border-[#39ff14]/50 rounded-3xl p-8 flex flex-col items-center shadow-[0_0_80px_rgba(57,255,20,0.3)] w-[90vw] max-w-2xl relative overflow-hidden">
+                                <div className="absolute inset-0 opacity-10 pointer-events-none" style={{backgroundImage: 'linear-gradient(#39ff14 1px, transparent 1px), linear-gradient(90deg, #39ff14 1px, transparent 1px)', backgroundSize: '20px 20px'}}></div>
+                                
+                                <h2 className="text-4xl md:text-5xl font-digital font-black text-white tracking-widest mb-2 drop-shadow-[0_0_15px_#39ff14] relative z-10 text-center">
+                                    {lang === 'es' ? 'CONFIGURACIÓN DE CARRERA' : 'RACE SETUP'}
+                                </h2>
+                                <p className="text-[#39ff14] font-mono text-sm tracking-[0.2em] mb-8 relative z-10 font-bold">
+                                    {circuitData.brand} • {circuitData.pieces?.length || 0} {lang === 'es' ? 'PISTAS' : 'PIECES'}
+                                </p>
+                                
+                                <div className="flex flex-col md:flex-row gap-6 w-full relative z-10">
+                                    {/* Tarjeta Vueltas */}
+                                    <div className="flex-1 bg-black/60 p-6 rounded-2xl border border-gray-700 flex flex-col items-center shadow-inner">
+                                        <label className="text-gray-400 font-black uppercase tracking-[0.15em] text-sm mb-4 block text-center flex items-center gap-2">
+                                            <Flag size={18} className="text-[#39ff14]" /> {lang === 'es' ? 'VUELTAS OBJETIVO' : 'TARGET LAPS'}
+                                        </label>
+                                        <div className="flex items-center justify-center gap-6">
+                                            <button onClick={() => setTargetLaps(Math.max(1, targetLaps - 1))} className="w-14 h-14 flex items-center justify-center bg-gray-800 hover:bg-[#39ff14] hover:text-black rounded-full font-black text-3xl transition-colors border border-gray-600 shadow-lg active:scale-90">-</button>
+                                            <span className="font-digital text-6xl text-white w-24 text-center drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">{targetLaps}</span>
+                                            <button onClick={() => setTargetLaps(targetLaps + 1)} className="w-14 h-14 flex items-center justify-center bg-gray-800 hover:bg-[#39ff14] hover:text-black rounded-full font-black text-3xl transition-colors border border-gray-600 shadow-lg active:scale-90">+</button>
+                                        </div>
+                                        <div className="flex gap-2 mt-6">
+                                            {[5, 10, 20, 50].map(val => (
+                                                <button key={val} onClick={() => setTargetLaps(val)} className={`px-4 py-2 rounded-lg font-black text-xs transition-all border ${targetLaps === val ? 'bg-[#39ff14] text-black border-[#39ff14] shadow-[0_0_10px_rgba(57,255,20,0.5)]' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 border-gray-700'}`}>
+                                                    {val}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Tarjeta IA */}
+                                    {!multiplayerSession && (
+                                        <div className="flex-1 bg-black/60 p-6 rounded-2xl border border-gray-700 flex flex-col items-center shadow-inner">
+                                            <label className="text-gray-400 font-black uppercase tracking-[0.15em] text-sm mb-4 block text-center flex items-center gap-2">
+                                                <Zap size={18} className={aiDifficulty > 0 ? "text-yellow-400 animate-pulse" : "text-gray-500"} /> 
+                                                {lang === 'es' ? 'NIVEL DE RIVAL (IA)' : 'RIVAL LEVEL (AI)'}
+                                            </label>
+                                            
+                                            <div className="w-full flex flex-wrap items-center justify-center gap-1.5 mt-2">
+                                                <button onClick={() => setAiDifficulty(0)} className={`w-[30%] py-3 text-xs font-black rounded-lg transition-all ${aiDifficulty === 0 ? 'bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-gray-800 border border-gray-700 text-gray-500 hover:bg-gray-700'}`}>OFF</button>
+                                                {[1,2,3,4,5].map(level => (
+                                                    <button key={level} onClick={() => setAiDifficulty(level)} className={`flex-1 min-w-[25%] py-3 text-xs font-black rounded-lg transition-all ${aiDifficulty === level ? (level === 5 ? 'bg-yellow-400 text-black shadow-[0_0_15px_rgba(250,204,21,0.5)]' : 'bg-[#39ff14] text-black shadow-[0_0_15px_rgba(57,255,20,0.5)]') : 'bg-gray-800 border border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                                                        {level}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <p className="text-[10px] text-gray-400 text-center mt-4 font-bold h-8">
+                                                {aiDifficulty === 0 ? (lang === 'es' ? 'IA desactivada. Corres solo.' : 'AI disabled. You race alone.') : 
+                                                 aiDifficulty === 5 ? (lang === 'es' ? 'Nivel EXTREMO. ¡Cuidado en las curvas!' : 'EXTREME Level. Careful on corners!') : 
+                                                 (lang === 'es' ? 'La IA ajustará su velocidad automáticamente.' : 'AI will adjust its speed automatically.')}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-8 flex gap-4 relative z-10 w-full">
+                                    <button onClick={() => { setIsPreRace(false); onClose(); }} className="flex-1 py-5 bg-gray-800 hover:bg-red-600 text-gray-300 hover:text-white border border-gray-600 hover:border-red-500 font-black uppercase tracking-[0.2em] rounded-xl transition-all active:scale-95 text-lg flex justify-center items-center gap-3">
+                                        <XIcon size={24} /> {lang === 'es' ? 'CANCELAR' : 'CANCEL'}
+                                    </button>
+                                    
+                                    {(!multiplayerSession || multiplayerSession.isHost) ? (
+                                        <button 
+                                            onClick={() => {
+                                                setIsPreRace(false);
+                                                if (startRaceSequenceRef.current) startRaceSequenceRef.current();
+                                                if (multiplayerSession && peerConn && peerConn.open && multiplayerSession.isHost) {
+                                                    peerConn.send({ type: 'START_RACE_SYNC', targetLaps });
+                                                }
+                                            }} 
+                                            className="flex-[2] py-5 bg-gradient-to-b from-[#39ff14] to-green-600 hover:from-[#00f0ff] hover:to-blue-600 text-black font-black uppercase tracking-[0.2em] rounded-xl shadow-[0_0_30px_rgba(57,255,20,0.5)] hover:shadow-[0_0_50px_rgba(57,255,20,0.8)] transition-all active:scale-95 text-xl flex justify-center items-center gap-3">
+                                            <Play size={28} className="fill-current" /> {lang === 'es' ? 'IR A LA PARRILLA' : 'GO TO GRID'}
+                                        </button>
+                                    ) : (
+                                        <div className="flex-[2] py-5 bg-gray-800 text-yellow-400 border border-yellow-500/50 font-black uppercase tracking-[0.1em] rounded-xl flex justify-center items-center gap-3 opacity-80 text-lg shadow-inner">
+                                            <div className="w-6 h-6 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+                                            {lang === 'es' ? 'ESPERANDO AL ANFITRIÓN...' : 'WAITING FOR HOST...'}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                 </div> 
             );
         };
@@ -3533,9 +4290,60 @@
           const [qualityMode, setQualityMode] = useState(() => { try { const saved = localStorage.getItem('slot_quality'); return ['ULTRA','HIGH','MED','LOW','MIN'].includes(saved) ? saved : 'MED'; } catch(e) { return 'MED'; }});
           const toggleQuality = () => { const levels = ['ULTRA', 'HIGH', 'MED', 'LOW', 'MIN']; const n = levels[(levels.indexOf(qualityMode) + 1) % levels.length]; setQualityMode(n); try { localStorage.setItem('slot_quality', n); } catch(e){} };
           
-          // Valores por defecto a 0, 0, 0 para no invertir ningún modelo accidentalmente
-          const [customCarAssets, setCustomCarAssets] = useState(Object.fromEntries(Array.from({length: 8}, (_, i) => [i + 1, { obj: null, rotation: [0, 0, 0], yOffset: 0, setup: null }])));
+          // Valores por defecto y carga automática de la configuración del coche desde el diseñador 2D
+          const [customCarAssets, setCustomCarAssets] = useState(() => {
+              const defaultSetups = {};
+              for(let i=1; i<=8; i++) {
+                  defaultSetups[i] = { 
+                      motorRPM: 20000, motorTorque: 240, motorName: 'Standard 20k', 
+                      tireGrip: 80, tireName: 'Slick Std', 
+                      gearTeeth: 27, pinionTeeth: 9, gearRatio: 3.0, 
+                      weight: 64.0, 
+                      name: `PILOTO ${i}`, 
+                      color: ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ec4899', '#f97316', '#64748b'][i-1]
+                  };
+              }
+              
+              const baseAssets = Object.fromEntries(Array.from({length: 8}, (_, i) => [i + 1, { obj: null, rotation: [0, 0, 0], yOffset: 0, setup: defaultSetups[i + 1] }]));
+              try {
+                  const savedSetups = localStorage.getItem('slot_car_setups');
+                  if (savedSetups) {
+                      const parsedSetups = JSON.parse(savedSetups);
+                      for (let i = 1; i <= 8; i++) {
+                          if (parsedSetups[i]) {
+                              baseAssets[i].setup = { ...defaultSetups[i], ...parsedSetups[i] };
+                          }
+                      }
+                  }
+              } catch(e) { console.warn("Error cargando configuración de coches desde 2D:", e); }
+              return baseAssets;
+          });
           
+          // NUEVO: Estado para saber qué coche estamos editando en el garaje (1 = P1, 2 = P2)
+          const [editingCarId, setEditingCarId] = useState(1);
+
+          // Sincronización en tiempo real si el usuario tiene ambas ventanas (2D y 3D) abiertas a la vez
+          useEffect(() => {
+              const handleStorageChange = (e) => {
+                  if (e.key === 'slot_car_setups' && e.newValue) {
+                      try {
+                          const parsedSetups = JSON.parse(e.newValue);
+                          setCustomCarAssets(prev => {
+                              const nextState = { ...prev };
+                              for (let i = 1; i <= 8; i++) {
+                                  if (parsedSetups[i]) {
+                                      nextState[i] = { ...nextState[i], setup: { ...(nextState[i].setup || {}), ...parsedSetups[i] } };
+                                  }
+                              }
+                              return nextState;
+                          });
+                      } catch(err) { console.warn("Error sincronizando setups:", err); }
+                  }
+              };
+              window.addEventListener('storage', handleStorageChange);
+              return () => window.removeEventListener('storage', handleStorageChange);
+          }, []);
+
           const myCarRef = useRef(null);
           useEffect(() => {
               myCarRef.current = customCarAssets[1]?.glb;
@@ -3646,6 +4454,7 @@
           };
 
           // Función de la Locutora para el Garaje
+          const announceTimeoutRef = useRef(null);
           const announceCar = (carName) => {
               if (!audioEnabled) return;
               const cleanName = carName.replace(/\.glb|\.gltf/gi, '').replace(/[-_]/g, ' ');
@@ -3665,16 +4474,19 @@
 
               const text = lang === 'es' ? phrasesEs[Math.floor(Math.random() * phrasesEs.length)] : phrasesEn[Math.floor(Math.random() * phrasesEn.length)];
               
-              // SIN BEEP Y CON EL MOTOR NUEVO: Habla de forma totalmente fluida y segura.
-              speakText(text, lang);
+              // FIX: Evitar colapso de la API de Voz al pasar los coches muy rápido (Debounce 400ms)
+              if (announceTimeoutRef.current) clearTimeout(announceTimeoutRef.current);
+              announceTimeoutRef.current = setTimeout(() => {
+                  speakText(text, lang);
+              }, 400);
           };
 
-          // Disparar locutora cuando cambia el coche 1
+          // Disparar locutora cuando cambia el coche editado
           useEffect(() => {
-              if (audioEnabled && customCarAssets[1]?.glbName) {
-                  announceCar(customCarAssets[1].glbName);
+              if (audioEnabled && customCarAssets[editingCarId]?.glbName) {
+                  announceCar(customCarAssets[editingCarId].glbName);
               }
-          }, [customCarAssets[1]?.glbName, audioEnabled, lang]);
+          }, [customCarAssets[editingCarId]?.glbName, audioEnabled, lang, editingCarId]);
 
           const [user, setUser] = useState(null);
           const [showAuthModal, setShowAuthModal] = useState(false);
@@ -3736,6 +4548,7 @@
 
           const loadCommunityCircuit = (circuit) => {
               if (circuit && circuit.pieces) {
+                  if (!validateCircuit(circuit)) return;
                   const parsed = parseCircuitData(circuit);
                   setCircuitData(parsed);
                   try { localStorage.setItem('slot_last_circuit', JSON.stringify(parsed)); } catch(e){}
@@ -3768,6 +4581,28 @@
           const [isFetchingList, setIsFetchingList] = useState(false);
           const [toastMsg, setToastMsg] = useState('');
 
+          const validateCircuit = (d) => {
+              if (!d || !d.pieces) return false;
+              const isUnsupported = d.pieces.some(p => 
+                  p.type === 'rotonda' || 
+                  p.subtype === 'rotonda' || 
+                  p.name === 'Rotonda' || 
+                  p.isParallel || 
+                  p.isOuter || 
+                  p.lane === 2 || 
+                  p.lane === 3 || 
+                  p.lane === 4 || 
+                  p.lane === 'outer' || 
+                  p.group === 'parallel'
+              );
+              if (isUnsupported) {
+                  setToastMsg(t.unsupportedCircuit);
+                  setTimeout(() => setToastMsg(''), 6000);
+                  return false;
+              }
+              return true;
+          };
+
           const handleGoTo2D = () => {
               try {
                   if (window.location.protocol === 'about:' || window.location.protocol === 'data:' || window.location.hostname === '') {
@@ -3786,7 +4621,7 @@
               const fetchCloudAssets = async () => {
                   setIsFetchingList(true);
                   try {
-                      const resCars = await fetch('https://api.github.com/repos/slotcarhome-star/Slot-Game/contents/Coches');
+                      const resCars = await fetch('https://api.github.com/repos/slotsoftware/Game3d/contents/Coches');
                       let firstCarUrl = null;
                       let firstCarName = null;
                       let secondCarUrl = null;
@@ -3798,11 +4633,11 @@
                           if (glbs.length > 0) {
                               setCurrentCarIndex(0);
                               firstCarName = glbs[0].name;
-                              firstCarUrl = `https://slotcarhome-star.github.io/Slot-Game/Coches/${firstCarName}`;
+                              firstCarUrl = `https://slotsoftware.github.io/Game3d/Coches/${firstCarName}`;
                               
                               if (glbs.length > 1) {
                                   secondCarName = glbs[1].name;
-                                  secondCarUrl = `https://slotcarhome-star.github.io/Slot-Game/Coches/${secondCarName}`;
+                                  secondCarUrl = `https://slotsoftware.github.io/Game3d/Coches/${secondCarName}`;
                               } else {
                                   secondCarName = firstCarName;
                                   secondCarUrl = firstCarUrl;
@@ -3810,16 +4645,29 @@
                           }
                       }
 
-                      const resDecor = await fetch('https://api.github.com/repos/slotcarhome-star/Circuitos3d/contents/decora');
+                      const resDecor = await fetch('https://api.github.com/repos/slotsoftware/Telemetria/contents/decora');
                       let decorUpdates = {};
                       if (resDecor.ok) {
                           const data = await resDecor.json();
-                          const decorGlbs = data.filter(f => f.name.toLowerCase().endsWith('.glb') || f.name.toLowerCase().endsWith('.gltf'));
+                          let decorGlbs = data.filter(f => f.name.toLowerCase().endsWith('.glb') || f.name.toLowerCase().endsWith('.gltf'));
+                          
+                          // FILTRO: Solo Álamos, Robles, Pinos, y Arbustos si los subes en el futuro
+                          const targetTrees = ['alamo', 'roble', 'pino', 'arbusto', 'matorral', 'seto'];
+                          const filteredTrees = decorGlbs.filter(f => {
+                              const nameLower = f.name.toLowerCase();
+                              return targetTrees.some(t => nameLower.includes(t));
+                          });
+                          
+                          if (filteredTrees.length > 0) {
+                              decorGlbs = filteredTrees;
+                          }
+                          
                           const decorSlots = [3, 4, 5, 6, 7, 8];
                           decorSlots.forEach((slotId, index) => {
-                              if (index < decorGlbs.length) {
-                                  const decorFile = decorGlbs[index];
-                                  const decorUrl = `https://slotcarhome-star.github.io/Circuitos3d/decora/${decorFile.name}`;
+                              if (decorGlbs.length > 0) {
+                                  // Se reparten usando módulo para repetir árboles si hay menos de 6
+                                  const decorFile = decorGlbs[index % decorGlbs.length];
+                                  const decorUrl = `https://slotsoftware.github.io/Telemetria/decora/${decorFile.name}`;
                                   const randomScatter = Math.floor(Math.random() * 11) + 5; 
                                   decorUpdates[slotId] = { glb: decorUrl, glbName: decorFile.name, isDecor: true, scatterCount: randomScatter, setup: null, rotation: [0, 0, 0], yOffset: 0 };
                               }
@@ -3829,10 +4677,10 @@
                       setCustomCarAssets(prev => {
                           const nextState = { ...prev };
                           if (firstCarUrl && !prev[1].glb) {
-                              nextState[1] = { ...nextState[1], glb: firstCarUrl, glbName: firstCarName, isDecor: false, setup: null };
+                              nextState[1] = { ...nextState[1], glb: firstCarUrl, glbName: firstCarName, isDecor: false };
                           }
                           if (secondCarUrl && !prev[2].glb) {
-                              nextState[2] = { ...nextState[2], glb: secondCarUrl, glbName: secondCarName, isDecor: false, setup: null };
+                              nextState[2] = { ...nextState[2], glb: secondCarUrl, glbName: secondCarName, isDecor: false };
                           }
                           Object.keys(decorUpdates).forEach(id => {
                               if (!prev[id].glb) { 
@@ -3851,8 +4699,8 @@
           const loadCloudCarDirect = (index) => {
                if (index < 0 || index >= cloudCars.length) return;
                const fileData = cloudCars[index];
-               const rawUrl = `https://slotcarhome-star.github.io/Slot-Game/Coches/${fileData.name}`;
-               setCustomCarAssets(prev => ({ ...prev, 1: { ...prev[1], glb: rawUrl, glbName: fileData.name, isDecor: false, setup: null } }));
+               const rawUrl = `https://slotsoftware.github.io/Game3d/Coches/${fileData.name}`;
+               setCustomCarAssets(prev => ({ ...prev, [editingCarId]: { ...prev[editingCarId], glb: rawUrl, glbName: fileData.name, isDecor: false } }));
           };
 
           const nextCar = () => {
@@ -3867,25 +4715,6 @@
               const prevIdx = (currentCarIndex - 1 + cloudCars.length) % cloudCars.length;
               setCurrentCarIndex(prevIdx);
               loadCloudCarDirect(prevIdx);
-          };
-
-          const loadCarSetup = (e, targetId) => {
-              const file = e.target.files[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = (ev) => {
-                  try {
-                      const setup = JSON.parse(ev.target.result);
-                      setCustomCarAssets(prev => ({
-                          ...prev,
-                          [targetId]: { ...prev[targetId], setup: setup }
-                      }));
-                  } catch (err) {
-                      alert(t.errorJson || "Error reading JSON");
-                  }
-              };
-              reader.readAsText(file);
-              e.target.value = ''; 
           };
 
           useEffect(() => {
@@ -4180,7 +5009,10 @@
                       let circuitToSend = null;
                       try {
                           const saved = localStorage.getItem('slot_last_circuit');
-                          if(saved) circuitToSend = parseCircuitData(JSON.parse(saved));
+                          if(saved) {
+                              const d = JSON.parse(saved);
+                              if (validateCircuit(d)) circuitToSend = parseCircuitData(d);
+                          }
                       } catch(e) {}
                       if (!circuitToSend || !circuitToSend.pieces) {
                           circuitToSend = { brand: 'NINCO', pieces: [{type:'straight', length:100}, {type:'straight', length:100}] };
@@ -4208,6 +5040,7 @@
                       setSession(prev => ({...prev, rivalName: data.playerName}));
                       if (data.carUrl) setCustomCarAssets(prev => ({ ...prev, 2: { ...prev[2], glb: data.carUrl, isDecor: false } }));
                       if (data.circuit) {
+                          if (!validateCircuit(data.circuit)) return;
                           const parsed = parseCircuitData(data.circuit);
                           setCircuitData(parsed); 
                           try { 
@@ -4226,7 +5059,7 @@
               if (file && targetId) {
                   const url = URL.createObjectURL(file);
                   const isDecor = arg3 === 'decor';
-                  setCustomCarAssets(prev => ({ ...prev, [targetId]: { ...prev[targetId], glb: url, glbName: file.name, isDecor: isDecor, setup: null } }));
+                  setCustomCarAssets(prev => ({ ...prev, [targetId]: { ...prev[targetId], glb: url, glbName: file.name, isDecor: isDecor } }));
               } else if (targetId && arg3) {
                   setCustomCarAssets(prev => ({ ...prev, [targetId]: { ...prev[targetId], ...arg3 } }));
               }
@@ -4238,10 +5071,24 @@
               const ls = document.getElementById('loading-screen'); 
               try {
                   const transferData = localStorage.getItem('slot_circuit_transfer');
-                  const validateAndLoad = (dataStr) => { try { const d = JSON.parse(dataStr); if (d.brand && d.pieces) { setCircuitData(parseCircuitData(d)); return true; } } catch (e) { } return false; };
+                  const validateAndLoad = (dataStr) => { 
+                      try { 
+                          const d = JSON.parse(dataStr); 
+                          if (d.brand && d.pieces) { 
+                              if (!validateCircuit(d)) return false;
+                              setCircuitData(parseCircuitData(d)); 
+                              return true; 
+                          } 
+                      } catch (e) { } 
+                      return false; 
+                  };
 
                   let loaded = false;
-                  if (transferData) { loaded = validateAndLoad(transferData); if (loaded) localStorage.setItem('slot_last_circuit', transferData); localStorage.removeItem('slot_circuit_transfer'); } 
+                  if (transferData) { 
+                      loaded = validateAndLoad(transferData); 
+                      if (loaded) localStorage.setItem('slot_last_circuit', transferData); 
+                      localStorage.removeItem('slot_circuit_transfer'); 
+                  } 
                   
                   setHasSavedCircuit(!!localStorage.getItem('slot_last_circuit'));
               } catch(e) {}
@@ -4253,7 +5100,13 @@
                   const saved = localStorage.getItem('slot_last_circuit');
                   if (saved) {
                       const d = JSON.parse(saved);
-                      if (d.brand && d.pieces) setCircuitData(parseCircuitData(d));
+                      if (d.brand && d.pieces) {
+                          if (!validateCircuit(d)) {
+                              localStorage.removeItem('slot_last_circuit');
+                              return;
+                          }
+                          setCircuitData(parseCircuitData(d));
+                      }
                   }
               } catch(e){}
           };
@@ -4264,6 +5117,7 @@
                 try { 
                     const d = JSON.parse(ev.target.result); 
                     if (d.brand && d.pieces) { 
+                        if (!validateCircuit(d)) return;
                         const parsed = parseCircuitData(d);
                         setCircuitData(parsed); 
                         localStorage.setItem('slot_last_circuit', JSON.stringify(parsed)); 
@@ -4272,13 +5126,13 @@
             }; r.readAsText(f); e.target.value = '';
           };
 
-          const currentSetup = customCarAssets[1]?.setup;
+          const currentSetupInfo = customCarAssets[editingCarId]?.setup;
 
           return (
             <>
                 {/* Audio Elements Persistentes (Bypass de Autoplay - SIN crossOrigin) */}
-                <audio ref={menuMusicRef} loop preload="auto" src="https://slotcarhome-star.github.io/Probes/1.mp3" />
-                <audio ref={raceMusicRef} loop preload="auto" src="https://slotcarhome-star.github.io/Probes/2.mp3" />
+                <audio ref={menuMusicRef} loop preload="auto" src="https://slotsoftware.github.io/Game3d/Musica/1.mp3" />
+                <audio ref={raceMusicRef} loop preload="auto" src="https://slotsoftware.github.io/Game3d/Musica/2.mp3" />
 
                 {toastMsg && (
                     <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[9999] bg-[#0f172a]/95 backdrop-blur-xl border border-cyan-500 text-cyan-400 px-6 py-3 rounded-xl shadow-[0_0_30px_rgba(0,240,255,0.4)] font-mono text-[10px] font-bold uppercase tracking-widest animate-in flex items-center gap-3 w-max max-w-[80vw]">
@@ -4291,7 +5145,7 @@
                     <Telemetry3DViewer circuitData={circuitData} carSettings={carSettings} customCarAssets={customCarAssets} onCarAssetUpdate={handleCarAssetUpdate} onClose={() => { setCircuitData(null); setSession(null); if(peerConn) peerConn.close(); try { setHasSavedCircuit(!!localStorage.getItem('slot_last_circuit')); } catch(e){} }} lang={lang} setLang={setLang} t={t} multiplayerSession={session} peerConn={peerConn} networkData={networkData} startHost={startHost} startJoin={startJoin} myPeerID={myPeerID} joinID={joinID} setJoinID={setJoinID} onGoTo2D={handleGoTo2D} audioEnabled={audioEnabled} toggleAudio={toggleAudio} musicEnabled={musicEnabled} toggleMusic={toggleMusic} qualityMode={qualityMode} toggleQuality={toggleQuality} />
                 ) : (
                     <div className="flex h-[100dvh] w-full bg-gradient-to-br from-blue-950 via-blue-900 to-cyan-900 overflow-hidden font-sans select-none text-gray-200 relative">
-                        <Garage3DBackground carUrl={customCarAssets[1]?.glb} carRotation={customCarAssets[1]?.rotation} qualityMode={qualityMode} />
+                        <Garage3DBackground carUrl={customCarAssets[editingCarId]?.glb} carRotation={customCarAssets[editingCarId]?.rotation} carOffset={customCarAssets[editingCarId]?.offset} qualityMode={qualityMode} />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none z-10"></div>
                         
                         <div className="absolute top-6 right-6 z-50 flex gap-4 items-start">
@@ -4396,7 +5250,7 @@
 
                 <div className="absolute left-0 top-10 bottom-10 w-[21rem] xl:w-[24rem] z-20 flex flex-col gap-6 animate-in slide-in-left pointer-events-none">
                     
-                    <div className="pointer-events-auto relative ml-10">
+                    <div className="pointer-events-auto relative ml-10 w-max">
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-[#00f0ff]/10 blur-[60px] rounded-full pointer-events-none z-0"></div>
                         
                         <h1 className="relative z-10 font-digital font-black uppercase tracking-widest leading-[1.05] text-left block">
@@ -4408,10 +5262,10 @@
                             </div>
                         </h1>
                         
-                        <div className="relative z-10 flex items-center gap-4 mt-6 ml-1">
-                            <div className="h-[2px] w-12 bg-[#00f0ff] shadow-[0_0_10px_#00f0ff]"></div>
-                            <p className="text-gray-300 font-mono text-[10px] tracking-[0.5em] font-bold uppercase">Albert Closa</p>
-                            <div className="h-[2px] w-12 bg-[#00f0ff] shadow-[0_0_10px_#00f0ff]"></div>
+                        <div className="relative z-10 flex items-center gap-3 mt-4 w-full">
+                            <div className="h-[2px] flex-1 bg-[#00f0ff] shadow-[0_0_10px_#00f0ff]"></div>
+                            <p className="text-gray-300 font-mono text-[10px] tracking-[0.4em] font-bold uppercase shrink-0">BY ALBERT CLOSA</p>
+                            <div className="h-[2px] flex-1 bg-[#00f0ff] shadow-[0_0_10px_#00f0ff]"></div>
                         </div>
                     </div>
 
@@ -4422,11 +5276,12 @@
                         <div className="transform skew-x-6 flex flex-col h-full p-4 pl-16 relative z-10 overflow-y-auto hide-scrollbar">
                             <div className="flex justify-between items-center border-b border-[#39ff14]/30 pb-2 mb-3">
                                 <h2 className="text-2xl font-black uppercase tracking-widest neon-text-green flex items-center gap-3 drop-shadow-lg">
-                                    <Car size={26} className="text-[#39ff14] drop-shadow-[0_0_15px_#39ff14]"/> {lang === 'es' ? 'MI GARAJE' : 'MY GARAGE'}
+                                    <Car size={26} className="text-[#39ff14] drop-shadow-[0_0_15px_#39ff14]"/> {lang === 'es' ? 'GARAJE' : 'GARAGE'}
                                 </h2>
-                                <span className="bg-[#39ff14] text-black text-[9px] font-black px-2 py-1 rounded transform -skew-x-12 tracking-widest shadow-[0_0_10px_#39ff14]">
-                                    {lang === 'es' ? 'ACTIVO' : 'ACTIVE'}
-                                </span>
+                                <div className="flex gap-1 transform -skew-x-12 bg-gray-900 p-1 rounded-lg border border-gray-700 shadow-inner">
+                                    <button onClick={() => setEditingCarId(1)} className={`px-4 py-1 rounded font-black text-[10px] tracking-widest transition-all ${editingCarId === 1 ? 'bg-[#39ff14] text-black shadow-[0_0_10px_#39ff14]' : 'text-gray-500 hover:text-white'}`}>P1 (TÚ)</button>
+                                    <button onClick={() => setEditingCarId(2)} className={`px-4 py-1 rounded font-black text-[10px] tracking-widest transition-all ${editingCarId === 2 ? 'bg-blue-500 text-white shadow-[0_0_10px_#3b82f6]' : 'text-gray-500 hover:text-white'}`}>P2 (IA)</button>
+                                </div>
                             </div>
                             
                             <div className="flex-1 flex flex-col justify-between gap-3">
@@ -4436,7 +5291,7 @@
                                         <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
                                             ESPECIFICACIONES
                                         </span>
-                                        {currentSetup ? (
+                                        {currentSetupInfo ? (
                                             <span className="text-[8px] font-bold text-[#39ff14] border border-[#39ff14] px-1 rounded bg-[#39ff14]/10">DATA JSON</span>
                                         ) : (
                                             <span className="text-[8px] font-bold text-gray-500 border border-gray-600 px-1 rounded bg-gray-800">STOCK SETUP</span>
@@ -4446,57 +5301,60 @@
                                     <div className="flex items-center justify-between w-full gap-2">
                                         <div className="flex flex-col flex-1 overflow-hidden">
                                             <h3 className="font-black text-3xl md:text-3xl italic text-white tracking-tighter drop-shadow-[0_2px_10px_rgba(255,255,255,0.5)] uppercase truncate">
-                                                {customCarAssets[1]?.glbName ? customCarAssets[1].glbName.replace('.glb','').replace('.gltf','') : (lang === 'es' ? 'CHASIS HOLO' : 'HOLO CHASSIS')}
+                                                {customCarAssets[editingCarId]?.glbName ? customCarAssets[editingCarId].glbName.replace('.glb','').replace('.gltf','') : (lang === 'es' ? 'CHASIS HOLO' : 'HOLO CHASSIS')}
                                             </h3>
                                             <span className="text-[8px] text-[#39ff14] uppercase tracking-widest font-bold mt-1">
                                                 {lang === 'es' ? 'AUTO-AJUSTE PISTA ACTIVADO' : 'TRACK AUTO-ALIGN ACTIVE'}
                                             </span>
                                         </div>
-                                        <button onClick={() => {
-                                            setCustomCarAssets(prev => {
-                                                const currentRot = prev[1].rotation || [0,0,0];
-                                                return { ...prev, 1: { ...prev[1], rotation: [currentRot[0], (currentRot[1] + 90) % 360, currentRot[2]] } };
-                                            });
-                                        }} className="px-3 py-2 bg-[#39ff14]/10 hover:bg-[#39ff14] text-[#39ff14] hover:text-black border-2 border-[#39ff14] rounded-xl flex flex-col items-center justify-center transition-all text-[9px] font-black uppercase tracking-widest shrink-0 shadow-[0_0_15px_rgba(57,255,20,0.3)] hover:shadow-[0_0_25px_rgba(57,255,20,0.6)] active:scale-95 group">
-                                            <RotateCw size={18} className="mb-1 group-hover:rotate-180 transition-transform duration-500" />
-                                            {lang === 'es' ? 'ROTAR' : 'ROTATE'}
-                                        </button>
+                                        
+                                        <div className="flex gap-1 shrink-0">
+                                            <button onClick={() => {
+                                                setCustomCarAssets(prev => {
+                                                    const currentRot = prev[editingCarId].rotation || [0,0,0];
+                                                    return { ...prev, [editingCarId]: { ...prev[editingCarId], rotation: [currentRot[0], (currentRot[1] + 90) % 360, currentRot[2]] } };
+                                                });
+                                            }} className="px-3 py-2 bg-[#39ff14]/10 hover:bg-[#39ff14] text-[#39ff14] hover:text-black border-2 border-[#39ff14] rounded-xl flex flex-col items-center justify-center transition-all text-[9px] font-black uppercase tracking-widest shrink-0 shadow-[0_0_15px_rgba(57,255,20,0.3)] hover:shadow-[0_0_25px_rgba(57,255,20,0.6)] active:scale-95 group">
+                                                <RotateCw size={18} className="mb-1 group-hover:rotate-180 transition-transform duration-500" />
+                                                {lang === 'es' ? 'ROTAR' : 'ROTATE'}
+                                            </button>
+                                        </div>
                                     </div>
                                     
                                     <div className="mt-3 flex flex-col gap-2 w-full mb-2">
                                         <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded border border-gray-700 shadow-inner w-max">
-                                            <div className="w-3 h-3 rounded-full shadow-[0_0_8px_currentColor]" style={{backgroundColor: currentSetup?.color || '#555555', color: currentSetup?.color || '#555555'}}></div>
+                                            <div className="w-3 h-3 rounded-full shadow-[0_0_8px_currentColor]" style={{backgroundColor: currentSetupInfo?.color || '#555555', color: currentSetupInfo?.color || '#555555'}}></div>
                                             <span className="text-[10px] font-black text-white uppercase tracking-widest pr-1">
-                                                {currentSetup?.name || (lang === 'es' ? 'PILOTO (SIN DATOS)' : 'DRIVER (NO DATA)')}
+                                                {currentSetupInfo?.name || (lang === 'es' ? `PILOTO ${editingCarId} (SIN DATOS)` : `DRIVER ${editingCarId} (NO DATA)`)}
                                             </span>
                                         </div>
                                         
                                         <div className="bg-black/50 border border-gray-700 rounded-lg p-4 grid grid-cols-2 gap-x-4 gap-y-4 shadow-inner w-full">
                                             <div className="flex flex-col">
                                                 <span className="text-[14px] text-gray-500 uppercase font-black tracking-wider">{t.motor || 'MOTOR'}</span>
-                                                <span className="text-[20px] text-[#00f0ff] font-mono font-bold leading-tight">{currentSetup?.motorName || '---'}</span>
+                                                <span className="text-[20px] text-[#00f0ff] font-mono font-bold leading-tight">{currentSetupInfo?.motorName || '---'}</span>
                                                 <span className="text-[16px] text-gray-400 font-mono mt-1">
-                                                    {currentSetup?.motorRPM || '---'} RPM<br/>{currentSetup?.motorTorque || '---'} g·cm
+                                                    {currentSetupInfo?.motorRPM || '---'} RPM<br/>{currentSetupInfo?.motorTorque || '---'} g·cm
                                                 </span>
                                             </div>
                                             
                                             <div className="flex flex-col">
                                                 <span className="text-[14px] text-gray-500 uppercase font-black tracking-wider">{t.tires || 'NEUMÁTICOS'}</span>
-                                                <span className="text-[20px] text-[#39ff14] font-mono font-bold leading-tight">{currentSetup?.tireName || '---'}</span>
-                                                <span className="text-[16px] text-gray-400 font-mono mt-1">GRIP: {currentSetup?.tireGrip || '---'}</span>
+                                                <span className="text-[20px] text-[#39ff14] font-mono font-bold leading-tight">{currentSetupInfo?.tireName || '---'}</span>
+                                                <span className="text-[16px] text-gray-400 font-mono mt-1">GRIP: {currentSetupInfo?.tireGrip || '---'}</span>
                                             </div>
 
                                             <div className="flex flex-col">
                                                 <span className="text-[14px] text-gray-500 uppercase font-black tracking-wider">{t.ratio || 'RELACIÓN'}</span>
                                                 <span className="text-[20px] text-white font-mono font-bold leading-tight">
-                                                    {currentSetup?.pinionTeeth || '--'} / {currentSetup?.gearTeeth || '--'}
+                                                    {currentSetupInfo?.pinionTeeth || '--'} / {currentSetupInfo?.gearTeeth || '--'}
                                                 </span>
-                                                <span className="text-[16px] text-gray-400 font-mono mt-1">RATIO: {currentSetup?.gearRatio || '---'}</span>
+                                                <span className="text-[16px] text-gray-400 font-mono mt-1">RATIO: {currentSetupInfo?.gearRatio || '---'}</span>
                                             </div>
 
                                             <div className="flex flex-col">
                                                 <span className="text-[14px] text-gray-500 uppercase font-black tracking-wider">{t.weight || 'PESO'}</span>
-                                                <span className="text-[20px] text-orange-400 font-mono font-bold leading-tight">{currentSetup?.weight || '--'}g</span>
+                                                <span className="text-[20px] text-orange-400 font-mono font-bold leading-tight">{currentSetupInfo?.weight || '--'}g</span>
                                                 <span className="text-[16px] text-gray-400 font-mono mt-1">CHASIS COMPLETO</span>
                                             </div>
                                         </div>
@@ -4529,24 +5387,6 @@
                                             <ArrowRight size={20} className="text-white group-hover:text-black group-hover:translate-x-1 transition-all" />
                                         </button>
                                     </div>
-                                </div>
-
-                                <div className="flex gap-4 mt-4 mb-2">
-                                    <label className="flex-1 cursor-pointer group bg-gradient-to-r from-gray-800 to-gray-900 border-2 border-gray-700 hover:border-cyan-500 rounded-xl transition-all flex flex-col items-center justify-center gap-2 py-4 shadow-lg hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:bg-gray-800">
-                                        <FolderOpen className="w-8 h-8 text-gray-500 group-hover:text-cyan-400 transition-colors" />
-                                        <span className="text-gray-400 group-hover:text-white font-black uppercase tracking-widest text-[12px] text-center px-2 transition-colors leading-tight">
-                                            {lang === 'es' ? 'CARGAR GLB LOCAL' : 'LOAD LOCAL GLB'}
-                                        </span>
-                                        <input type="file" accept=".glb,.gltf" onChange={(e) => { if(e.target.files[0]) handleCarAssetUpdate(e.target.files[0], 1, 'car'); e.target.value=''; }} className="hidden" />
-                                    </label>
-
-                                    <label className="flex-1 cursor-pointer group bg-gradient-to-r from-gray-800 to-gray-900 border-2 border-gray-700 hover:border-[#39ff14] rounded-xl transition-all flex flex-col items-center justify-center gap-2 py-4 shadow-lg hover:shadow-[0_0_20px_rgba(57,255,20,0.4)] hover:bg-gray-800">
-                                        <Settings className="w-8 h-8 text-gray-500 group-hover:text-[#39ff14] transition-colors" />
-                                        <span className="text-gray-400 group-hover:text-white font-black uppercase tracking-widest text-[12px] text-center px-2 transition-colors leading-tight">
-                                            {t.loadSetup || 'CARGAR SETUP'}
-                                        </span>
-                                        <input type="file" accept=".json" onChange={(e) => loadCarSetup(e, 1)} className="hidden" />
-                                    </label>
                                 </div>
                             </div>
                         </div>
