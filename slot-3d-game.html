@@ -4605,12 +4605,7 @@
 
           const handleGoTo2D = () => {
               try {
-                  if (window.location.protocol === 'about:' || window.location.protocol === 'data:' || window.location.hostname === '') {
-                      setToastMsg(lang === 'es' ? 'Navegación a 2D deshabilitada en este entorno virtual. Abre circuitos.html localmente.' : '2D Navigation disabled in this virtual environment. Open circuitos.html locally.');
-                      setTimeout(() => setToastMsg(''), 5000);
-                  } else {
-                      window.location.href = 'circuitos.html';
-                  }
+                  window.location.href = 'https://slotsoftware.github.io/Telemetria/circuitos.html';
               } catch (e) {
                   setToastMsg(lang === 'es' ? 'Error al navegar: Bloqueado por seguridad del entorno.' : 'Navigation error: Blocked by environment security.');
                   setTimeout(() => setToastMsg(''), 5000);
